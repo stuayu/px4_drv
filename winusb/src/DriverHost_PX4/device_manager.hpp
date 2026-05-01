@@ -12,7 +12,14 @@
 
 #include <guiddef.h>
 
+#ifdef __APPLE__
+// Use angle-bracket form so the compiler searches -I paths in order.
+// macos/src/DriverHost_PX4 is listed first, so the libusb-based
+// device_notifier.hpp is found instead of the Windows version here.
+#include <device_notifier.hpp>
+#else
 #include "device_notifier.hpp"
+#endif
 #include "device_definition_set.hpp"
 #include "device_base.hpp"
 #include "receiver_manager.hpp"

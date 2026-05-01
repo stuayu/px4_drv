@@ -11,6 +11,9 @@
 #ifdef __linux__
 #include <linux/device.h>
 #include <linux/usb.h>
+#elif defined(__APPLE__)
+#include "misc_posix.h"
+#include "libusb_compat.h"
 #elif defined(_WIN32) || defined(_WIN64)
 #include "misc_win.h"
 #include "winusb_compat.h"

@@ -5,7 +5,11 @@
 #include <cstdint>
 #include <functional>
 
+#if defined(_WIN32) || defined(_WIN64)
 #include <guiddef.h>
+#else
+#include "guid_compat.h"
+#endif
 
 namespace px4 {
 

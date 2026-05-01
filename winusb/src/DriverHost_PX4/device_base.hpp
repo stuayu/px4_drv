@@ -6,8 +6,10 @@
 #include <string>
 #include <stdexcept>
 
+#if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
 #include <winusb.h>
+#endif
 
 #include "type.hpp"
 #include "command.hpp"

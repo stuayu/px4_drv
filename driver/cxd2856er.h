@@ -12,7 +12,7 @@
 #include <linux/types.h>
 #include <linux/mutex.h>
 #include <linux/device.h>
-#elif defined(_WIN32) || defined(_WIN64)
+#elif defined(__APPLE__) || defined(_WIN32) || defined(_WIN64)
 #include "misc_win.h"
 #endif
 

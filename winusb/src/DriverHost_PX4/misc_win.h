@@ -2,6 +2,10 @@
 
 #pragma once
 
+#ifdef __APPLE__
+#include "misc_posix.h"
+#else
+
 #include <stdint.h>
 #include <stdbool.h>
 #include <errno.h>
@@ -110,3 +114,5 @@ struct firmware {
 
 int request_firmware(const struct firmware **fw, const char *name, struct device *);
 void release_firmware(const struct firmware *fw);
+
+#endif /* __APPLE__ */

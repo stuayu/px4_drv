@@ -2,6 +2,10 @@
 
 #pragma once
 
+#ifdef __APPLE__
+#include "libusb_compat.h"
+#else
+
 #include <windows.h>
 #include <winusb.h>
 
@@ -11,3 +15,5 @@ struct usb_device {
 	USB_DEVICE_DESCRIPTOR descriptor;
 	USB_STRING_DESCRIPTOR *serial;
 };
+
+#endif /* __APPLE__ */
