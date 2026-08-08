@@ -1,4 +1,4 @@
-
+﻿
 # カレントディレクトリに移動
 if ($MyInvocation.MyCommand.Path -ne $null) {
     $CurrentPath = (Split-Path $MyInvocation.MyCommand.Path -Parent)
@@ -40,23 +40,24 @@ foreach ($build_platform in $build_platforms) {
     if ($LASTEXITCODE -ne 0) {
         throw "MSBuild failed. platform: $build_platform"
     }
-}
 
-# ビルドされたファイルに署名(Smart App Control 対応)
-$sign_tool_path = 'pkg/signing-tools/signtool'
-$trusted_publisher_pfx_path = 'pkg/signing-tools/trustedpub.pfx'
-$signing_target_paths = @(
-    'build/x86/Release-static/BonDriver_PX4.dll',
-    'build/x86/Release-static/DriverHost_PX4.exe',
-    'build/x64/Release-static/BonDriver_PX4.dll',
-    'build/x64/Release-static/DriverHost_PX4.exe'
-)
-
-foreach ($signing_target_path in $signing_target_paths) {
-    & $sign_tool_path sign /f $trusted_publisher_pfx_path /p 123 /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $signing_target_path
-
+    # Linux 版と WinUSB 版が共有する TS 同期判定を実際の入力値で検証
+    msbuild tests/ts_sync_condition_test.vcxproj /t:"Rebuild" /p:"Configuration=Release-static;Platform=$build_platform;PlatformToolset=v143"
     if ($LASTEXITCODE -ne 0) {
-        throw "Code signing failed. target: $signing_target_path"
+        throw "TS sync condition test build failed. platform: $build_platform"
+    }
+    & 'tests/ts_sync_condition_test.ps1' -Platform $build_platform
+
+    # 実機に依存しないカード抜去・再挿入・接触不良の状態遷移を毎回検証
+    & "build/$build_platform/Release-static/smart_card_state_test.exe"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Smart card state test failed. platform: $build_platform"
+    }
+
+    # 選局時の TS バッファ初期化が読み書きと競合しても止まらないことを毎回検証
+    & "build/$build_platform/Release-static/ringbuffer_purge_test.exe"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Ring buffer purge test failed. platform: $build_platform"
     }
 }
 
@@ -204,6 +205,13 @@ Copy-Item pkg/BonDriver_PX4/BonDriver_PX4-T.ChSet.txt dist/BonDriver_PX-S1UR_64b
 Copy-Item build/x64/Release-static/DriverHost_PX4.exe dist/BonDriver_PX-S1UR_64bit/DriverHost_PX4.exe
 Copy-Item pkg/DriverHost_PX4/DriverHost_PX4.ini dist/BonDriver_PX-S1UR_64bit/DriverHost_PX4.ini
 Copy-Item pkg/DriverHost_PX4/it930x-firmware.bin dist/BonDriver_PX-S1UR_64bit/it930x-firmware.bin
+
+# 各 BonDriver と同じビット数の WinSCard.dll を配置
+# WinUSB 版の全対応機種で内蔵カードリーダーを利用できる
+Get-ChildItem dist/ -Directory -Filter 'BonDriver_*' | ForEach-Object {
+    $win_scard_platform = if ($_.Name.EndsWith('_32bit')) { 'x86' } else { 'x64' }
+    Copy-Item "build/$win_scard_platform/Release-static/WinSCard.dll" $_.FullName
+}
 
 # inf ファイルをコピー
 Copy-Item -Recurse pkg/inf/ dist/Driver

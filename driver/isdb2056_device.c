@@ -14,6 +14,7 @@
 
 #include "px4_device_params.h"
 #include "firmware.h"
+#include "ts_sync.h"
 
 #define ISDB2056_DEVICE_TS_SYNC_COUNT	4
 #define ISDB2056_DEVICE_TS_SYNC_SIZE	(188 * ISDB2056_DEVICE_TS_SYNC_COUNT)
@@ -135,7 +136,7 @@ static void isdb2056_device_stream_process(struct ptx_chrdev *chrdev,
 
 		while (true) {
 			if (likely(((i + 1) * 188) <= remain)) {
-				if (unlikely(p[i * 188] != 0x47))
+				if (unlikely(!px4_ts_has_plain_sync(p[i * 188])))
 					break;
 			} else {
 				sync_remain = true;
@@ -283,7 +284,7 @@ static int isdb2056_chrdev_open(struct ptx_chrdev *chrdev)
 		dev_err(isdb2056->dev,
 			"isdb2056_chrdev_open %u: tc90522_enable_ts_pins_t(false) failed. (ret: %d)\n",
 			chrdev_group->id, ret);
-		return ret;
+		goto fail_backend;
 	}
 
 	/* sleep */
@@ -292,7 +293,7 @@ static int isdb2056_chrdev_open(struct ptx_chrdev *chrdev)
 		dev_err(isdb2056->dev,
 			"isdb2056_chrdev_open %u: tc90522_sleep_t(true) failed. (ret: %d)\n",
 			chrdev_group->id, ret);
-		return ret;
+		goto fail_backend;
 	}
 
 	sys.system = R850_SYSTEM_ISDB_T;
@@ -304,7 +305,7 @@ static int isdb2056_chrdev_open(struct ptx_chrdev *chrdev)
 		dev_err(isdb2056->dev,
 			"isdb2056_chrdev_open %u: r850_set_system() failed. (ret: %d)\n",
 			chrdev_group->id, ret);
-		return ret;
+		goto fail_backend;
 	}
 
 	/* Initialization for ISDB-S */
@@ -315,7 +316,7 @@ static int isdb2056_chrdev_open(struct ptx_chrdev *chrdev)
 		dev_err(isdb2056->dev,
 			"isdb2056_chrdev_open %u: tc90522_write_multiple_regs(tc_init_s) failed. (ret: %d)\n",
 			chrdev_group->id, ret);
-		return ret;
+		goto fail_backend;
 	}
 
 	/* disable ts pins */
@@ -324,7 +325,7 @@ static int isdb2056_chrdev_open(struct ptx_chrdev *chrdev)
 		dev_err(isdb2056->dev,
 			"isdb2056_chrdev_open %u: tc90522_enable_ts_pins_s(false) failed. (ret: %d)\n",
 			chrdev_group->id, ret);
-		return ret;
+		goto fail_backend;
 	}
 
 	/* sleep */
@@ -333,7 +334,7 @@ static int isdb2056_chrdev_open(struct ptx_chrdev *chrdev)
 		dev_err(isdb2056->dev,
 			"isdb2056_chrdev_open %u: tc90522_sleep_s(true) failed. (ret: %d)\n",
 			chrdev_group->id, ret);
-		return ret;
+		goto fail_backend;
 	}
 
 	kref_get(&isdb2056->kref);

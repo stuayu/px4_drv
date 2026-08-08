@@ -217,6 +217,23 @@ typedef unsigned char  BYTE;
 #endif
 
 // ---------------------------------------------------------------------------
+// OVERLAPPED stub
+// The shared winusb headers declare overlapped-I/O helpers. The macOS pipe
+// implementation is synchronous and never uses them, but the type must exist
+// for those declarations to compile.
+// ---------------------------------------------------------------------------
+#ifndef _PX4_OVERLAPPED_DEFINED
+#define _PX4_OVERLAPPED_DEFINED
+typedef struct _OVERLAPPED {
+	uintptr_t Internal;
+	uintptr_t InternalHigh;
+	DWORD     Offset;
+	DWORD     OffsetHigh;
+	HANDLE    hEvent;
+} OVERLAPPED, *LPOVERLAPPED;
+#endif
+
+// ---------------------------------------------------------------------------
 // HANDLE-based event primitives (implemented as POSIX self-pipe pairs)
 // Each "event HANDLE" is a heap-allocated struct _px4_event *.
 // ---------------------------------------------------------------------------

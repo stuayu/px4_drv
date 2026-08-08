@@ -28,3 +28,4 @@ fwtool/*.bin
 /.vs/
 
 macos/build/**
+.codex*
