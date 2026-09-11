@@ -26,7 +26,15 @@ public:
 	DriverHost(DriverHost &&) = delete;
 	DriverHost &operator=(DriverHost &&) = delete;
 
-	void Run();
+	/*
+	 * idle_timeout_sec が 0 の場合は接続数によらず常駐し、SIGINT / SIGTERM を
+	 * 受け取るまで終了しません。0 以外の場合は、全サーバーの接続数が 0 の状態が
+	 * その秒数継続したときに終了します。
+	 */
+	void Run(unsigned int idle_timeout_sec);
+
+	/* シグナルハンドラから呼び出す終了要求。非同期シグナル安全な処理だけを行います。 */
+	static void RequestStop() noexcept;
 
 private:
 	px4::ConfigSet configs_;

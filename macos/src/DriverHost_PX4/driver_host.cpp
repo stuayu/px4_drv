@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/file.h>   /* flock */
+#include <csignal>
 
 #include "msg.h"
 #include "pipe_server.hpp"   /* pipe_server_cleanup declaration */
@@ -19,6 +20,14 @@ namespace px4 {
 
 static const char kLockFile[] = "/tmp/px4_drv_host.lock";
 static int g_lock_fd = -1;
+
+/* シグナルハンドラから書き換えるため、非同期シグナル安全な型で保持します。 */
+static volatile sig_atomic_t g_stop_requested = 0;
+
+void DriverHost::RequestStop() noexcept
+{
+	g_stop_requested = 1;
+}
 
 DriverHost::DriverHost()
 {
@@ -33,7 +42,7 @@ DriverHost::~DriverHost()
 	device_manager_.reset();
 }
 
-void DriverHost::Run()
+void DriverHost::Run(unsigned int idle_timeout_sec)
 {
 	/* Single-instance guard via advisory lock on a lock file */
 	g_lock_fd = ::open(kLockFile, O_CREAT | O_RDWR | O_CLOEXEC, 0600);
@@ -56,17 +65,30 @@ void DriverHost::Run()
 	ctrl_server_->Start();
 	stream_server_->Start();
 
-	msg_info("DriverHost_PX4 started.\n");
+	if (idle_timeout_sec)
+		msg_info("DriverHost_PX4 started. (idle timeout: %u sec)\n", idle_timeout_sec);
+	else
+		msg_info("DriverHost_PX4 started. (resident)\n");
 
-	/* Idle loop: exit 15 s after the last client disconnects */
-	int idle = 0;
-	while (idle < 3) {
-		::sleep(5);
-		if (!ctrl_server_->GetActiveConnectionCount() &&
-		    !stream_server_->GetActiveConnectionCount())
-			idle++;
-		else
+	/*
+	 * 終了要求は 1 秒間隔で確認します。
+	 * 待機の刻みを広く取ると SIGTERM から実際の終了までの時間が延び、
+	 * 受信中の停止処理が遅れるため、待機はアイドル判定の粒度と分けています。
+	 */
+	unsigned int idle = 0;
+
+	while (!g_stop_requested) {
+		::sleep(1);
+
+		if (ctrl_server_->GetActiveConnectionCount() ||
+		    stream_server_->GetActiveConnectionCount()) {
 			idle = 0;
+			continue;
+		}
+
+		/* idle_timeout_sec == 0 は常駐指定のため、無接続でも終了しません。 */
+		if (idle_timeout_sec && ++idle >= idle_timeout_sec)
+			break;
 	}
 
 	msg_info("DriverHost_PX4 shutting down.\n");
