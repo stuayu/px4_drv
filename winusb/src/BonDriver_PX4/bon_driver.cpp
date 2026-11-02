@@ -17,6 +17,7 @@
 #include "pipe_client.hpp"
 #include "command.hpp"
 #include "util.hpp"
+#include "msg.h"
 #include "isdbc_channel.h"
 
 namespace px4 {
