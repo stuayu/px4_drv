@@ -370,6 +370,12 @@ void ReceiverBase::StreamBuffer::ResetStats(bool keep_tune_timing) noexcept
 	const std::uint64_t now = msg_now_ms();
 
 	std::lock_guard<std::mutex> lock(tsmf_mtx_);
+	ResetStatsLocked(now, keep_tune_timing);
+}
+
+void ReceiverBase::StreamBuffer::ResetStatsLocked(std::uint64_t now,
+							 bool keep_tune_timing) noexcept
+{
 	stats_generation_++;
 	ts_stats_.Reset(now);
 	stats_report_ms_ = now;
@@ -633,15 +639,23 @@ ReceiverBase::StreamBuffer::ReadResult ReceiverBase::StreamBuffer::HandleRead(st
 
 bool ReceiverBase::StreamBuffer::Purge() noexcept
 {
-	/* px4rec などは選局後に PURGE してから受信を始めるため、選局時間の計測は残す。 */
-	ResetStats(true);
-	return ringbuf_.Purge();
+	/* PURGE 中に入力を割り込ませず、部分フレームも出力キューと同じ境界で捨てる。 */
+	std::lock_guard<std::mutex> lock(tsmf_mtx_);
+	ResetStatsLocked(msg_now_ms(), true);
+	const bool purged = ringbuf_.Purge();
+	if (purged && tsmf_ && tsmf_filter_)
+		tsmf_filter_resync(tsmf_filter_.get());
+	return purged;
 }
 
 bool ReceiverBase::StreamBuffer::Purge(std::chrono::steady_clock::time_point deadline) noexcept
 {
-	ResetStats(true);
-	return ringbuf_.Purge(deadline);
+	std::lock_guard<std::mutex> lock(tsmf_mtx_);
+	ResetStatsLocked(msg_now_ms(), true);
+	const bool purged = ringbuf_.Purge(deadline);
+	if (purged && tsmf_ && tsmf_filter_)
+		tsmf_filter_resync(tsmf_filter_.get());
+	return purged;
 }
 
 bool ReceiverBase::StreamBuffer::StartTsmf(std::uint32_t stream_index, bool discard_null_packets, unsigned int stale_packets) noexcept

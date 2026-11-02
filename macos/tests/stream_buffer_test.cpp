@@ -196,6 +196,46 @@ bool TsmfRejectsPartialPacket()
 	return !write_ok && size == 0;
 }
 
+/* PURGE の前に蓄積した TSMF packet を、PURGE 後のフレームへ混ぜない。 */
+bool TsmfPurgeDropsPartialFrame()
+{
+	constexpr std::size_t detect_packets = 53 * 8;
+	constexpr std::size_t before_purge_packets = 20;
+	constexpr std::size_t after_purge_packets = 52 - before_purge_packets;
+	StreamBuffer buffer;
+	if (!buffer.Alloc(kPacket * 64))
+		return false;
+	buffer.Start();
+	if (!buffer.StartTsmf(0, false, 0)) {
+		buffer.Stop();
+		return false;
+	}
+
+	auto make_packets = [](std::size_t first, std::size_t count) {
+		std::vector<std::uint8_t> packets(kPacket * count, 0);
+		for (std::size_t i = 0; i < count; ++i) {
+			auto *packet = packets.data() + i * kPacket;
+			packet[0] = 0x47;
+			packet[1] = 0x01;
+			packet[2] = static_cast<std::uint8_t>(first + i);
+		}
+		return packets;
+	};
+	auto before = make_packets(0, detect_packets + before_purge_packets - 1);
+	std::size_t before_size = before.size();
+	const bool before_ok = buffer.Write(before.data(), before_size) && before_size == 0;
+	const bool purge_ok = buffer.Purge();
+	auto after = make_packets(detect_packets + before_purge_packets - 1,
+		after_purge_packets);
+	std::size_t after_size = after.size();
+	const bool after_ok = buffer.Write(after.data(), after_size);
+	buffer.Stop();
+	if (!before_ok || !purge_ok || !after_ok || after_size != 0)
+		std::fprintf(stderr, "TSMF purge: before=%d purge=%d after=%d output=%zu\n",
+			before_ok, purge_ok, after_ok, after_size);
+	return before_ok && purge_ok && after_ok && after_size == 0;
+}
+
 /* USB 側の Write 中に NotifyWrite が write_size_ を同時に更新しない。 */
 bool TsmfNotifyWriteConcurrentWithBatch()
 {
@@ -736,6 +776,7 @@ int main()
 	ok = ScrambledPacketPassesUnchanged() && ok;
 	ok = TsmfFiltersEveryPacketInBatch() && ok;
 	ok = TsmfRejectsPartialPacket() && ok;
+	ok = TsmfPurgeDropsPartialFrame() && ok;
 	ok = TsmfNotifyWriteConcurrentWithBatch() && ok;
 	if (ok)
 		std::puts("stream_buffer_test: passed");

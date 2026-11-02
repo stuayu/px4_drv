@@ -112,6 +112,8 @@ public:
 		};
 
 		bool WriteFiltered(const void *buf, std::size_t &size, std::uint64_t packets, WriteReport &report) noexcept;
+		/* tsmf_mtx_ の内側で呼ぶ。 */
+		void ResetStatsLocked(std::uint64_t now, bool keep_tune_timing) noexcept;
 		/* tsmf_mtx_ の内側で呼ぶ。size はフィルタ前の入力長。 */
 		void UpdateStatsLocked(const void *buf, std::size_t size, std::uint64_t packets, WriteReport &report) noexcept;
 		void LogStats(const WriteReport &report) noexcept;
