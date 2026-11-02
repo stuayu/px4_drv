@@ -1,4 +1,5 @@
 #include "t230c_silicon.hpp"
+#include "t230c_tuning.hpp"
 #include <cstdlib>
 #include <cstdio>
 #include <cerrno>
@@ -14,6 +15,9 @@
 int main()
 {
     using namespace px4::t230c;
+    CHECK(ResolveTuneLockResult(0, true) == 0);
+    CHECK(ResolveTuneLockResult(0, false) == -ETIMEDOUT);
+    CHECK(ResolveTuneLockResult(-EIO, false) == -EIO);
     CHECK(DemodTuneCommands(5274, 6).at(7) == Bytes({0x14,0,0x0a,0x10,0x36,0}));
     CHECK(DemodTuneCommands(5274, 6).at(8) == Bytes({0x14,0,0x02,0x11,0x9a,0x14}));
     const auto tuner = TunerTuneCommands(473000, 6);

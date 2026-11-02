@@ -12,6 +12,7 @@
 
 #include "msg.h"
 #include "util.hpp"
+#include "t230c_tuning.hpp"
 
 namespace px4 {
 
@@ -426,7 +427,8 @@ bool T230CDevice::Receiver::TuneOverride(std::uint32_t timeout, bool &result)
 			if (remaining > std::chrono::steady_clock::duration::zero())
 				std::this_thread::sleep_for((std::min)(remaining, std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::milliseconds(20))));
 		}
-		result = !ret && locked;
+		ret = t230c::ResolveTuneLockResult(ret, locked);
+		result = ret == 0;
 	}
 	if (result) {
 		/* ロックより前に届いた TS で判断しないよう、ロック後に TSMF の解析をやり直し、
