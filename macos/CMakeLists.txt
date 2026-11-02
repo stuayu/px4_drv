@@ -144,6 +144,7 @@ set(DRIVER_C_SRCS
     "${DRIVER_DIR}/common/bridge/it930x.c"
     "${DRIVER_DIR}/common/bridge/siano_wire_core.c"
     "${DRIVER_DIR}/common/bridge/t230c_usb.c"
+    "${DRIVER_DIR}/common/bridge/t230c_usb_recovery.c"
     "${DRIVER_DIR}/common/signal/signal_stat.c"
     "${DRIVER_DIR}/common/demod/cxd2856er.c"
     "${DRIVER_DIR}/common/demod/cxd2858er.c"
@@ -353,6 +354,10 @@ if(BUILD_TESTING)
         "${HOST_SRC}/common/msg_log.c"
         "${MACOS_SRC}/common/msg.c")
     add_test(NAME t230c_common_test COMMAND t230c_common_test)
+    add_executable(t230c_usb_recovery_test
+        "${HOST_SRC}/tests/t230c_usb_recovery_test.c"
+        "${DRIVER_DIR}/common/bridge/t230c_usb_recovery.c")
+    add_test(NAME t230c_usb_recovery_test COMMAND t230c_usb_recovery_test)
     add_executable(px4rec_failure_test
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/px4rec_failure_test.cpp"
         "${B25_SRC}/arib_std_b25.c" "${B25_SRC}/b_cas_card.c"
