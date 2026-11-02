@@ -116,6 +116,86 @@ bool ScrambledPacketPassesUnchanged()
 	return ok;
 }
 
+/* TSMF の選別は一度の Write() に複数 TS packet が含まれても全 packet を処理する。 */
+bool TsmfFiltersEveryPacketInBatch()
+{
+	constexpr std::size_t detect_packets = 53 * 8;
+	constexpr std::size_t input_packets = detect_packets + 53;
+	constexpr std::size_t output_packets = 52;
+	StreamBuffer buffer;
+	if (!buffer.Alloc(kPacket * input_packets))
+		return false;
+	buffer.SetThresholdSize(1);
+	buffer.Start();
+	if (!buffer.StartTsmf(0, false, 0)) {
+		buffer.Stop();
+		return false;
+	}
+
+	std::vector<std::uint8_t> input(kPacket * input_packets);
+	for (std::size_t i = 0; i < input_packets; ++i) {
+		auto *packet = input.data() + i * kPacket;
+		for (std::size_t j = 0; j < kPacket; ++j)
+			packet[j] = static_cast<std::uint8_t>((i + j) & 0xff);
+		packet[0] = 0x47;
+		packet[1] = 0x01; // PID 0x0100-0x01ff, not a TSMF header or NULL packet.
+		packet[2] = static_cast<std::uint8_t>(i);
+	}
+
+	std::size_t size = input.size();
+	const bool write_ok = buffer.Write(input.data(), size);
+	const bool selected = buffer.GetTsmfState() == TSMF_FILTER_FOUND;
+	const bool complete_frame = size == kPacket * output_packets;
+	if (!write_ok || !selected || !complete_frame) {
+		buffer.Stop();
+		std::fprintf(stderr, "TSMF batch: write=%d selected=%d output_size=%zu\n",
+			write_ok, selected, size);
+		return false;
+	}
+
+	buffer.NotifyWrite();
+	ReadSession session;
+	std::vector<std::uint8_t> received;
+	const ReadResult read_result = buffer.HandleRead(kPacket * output_packets,
+		[&](const void *data, std::size_t read_size) {
+			const auto *bytes = static_cast<const std::uint8_t *>(data);
+			received.assign(bytes, bytes + read_size);
+			buffer.StopRequest(session);
+			return true;
+	}, &session);
+	buffer.Stop();
+
+	const auto first = input.begin() + static_cast<std::ptrdiff_t>((detect_packets - 1) * kPacket);
+	const auto last = first + static_cast<std::ptrdiff_t>(output_packets * kPacket);
+	const bool ok = read_result == ReadResult::Ended &&
+		received == std::vector<std::uint8_t>(first, last);
+	if (!ok)
+		std::fprintf(stderr, "TSMF batch: selected packets were not preserved\n");
+	return ok;
+}
+
+/* TSMF は 188 byte 未満・端数付きの入力を packet として読まず、失敗を返す。 */
+bool TsmfRejectsPartialPacket()
+{
+	StreamBuffer buffer;
+	if (!buffer.Alloc(kPacket * 2))
+		return false;
+	buffer.Start();
+	if (!buffer.StartTsmf(0, false, 0)) {
+		buffer.Stop();
+		return false;
+	}
+
+	std::uint8_t partial[kPacket - 1] = {};
+	partial[0] = 0x47;
+	std::size_t size = sizeof(partial);
+	const bool write_ok = buffer.Write(partial, size);
+	buffer.Stop();
+	if (write_ok || size != 0)
+		std::fprintf(stderr, "TSMF partial packet: write=%d size=%zu\n", write_ok, size);
+	return !write_ok && size == 0;
+}
+
 template <typename F>
 bool ReturnsWithin(F &&function)
 {
@@ -610,6 +690,8 @@ int main()
 	ok = IsdbCTuneTimingStartsAtLock() && ok;
 	ok = ShortRingWriteReportsFailure() && ok;
 	ok = ScrambledPacketPassesUnchanged() && ok;
+	ok = TsmfFiltersEveryPacketInBatch() && ok;
+	ok = TsmfRejectsPartialPacket() && ok;
 	if (ok)
 		std::puts("stream_buffer_test: passed");
 	return ok ? 0 : 1;

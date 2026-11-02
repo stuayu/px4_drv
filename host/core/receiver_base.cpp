@@ -505,20 +505,33 @@ bool ReceiverBase::StreamBuffer::WriteFiltered(const void *buf, std::size_t &siz
 {
 	std::lock_guard<std::mutex> lock(tsmf_mtx_);
 	bool ret;
+	if (tsmf_ && ((size % 188) != 0 || (size && !buf))) {
+		/* TSMF フィルターは 188 byte の完全な TS packet を読む。 */
+		size = 0;
+		return false;
+	}
 
 	UpdateStatsLocked(buf, size, input_packets, report);
 
 	if (tsmf_) {
-		const std::uint8_t *out;
+		const auto *packets = static_cast<const std::uint8_t *>(buf);
+		const std::size_t input_size = size;
+		size = 0;
+		for (std::size_t offset = 0; offset < input_size; offset += 188) {
+			const std::uint8_t *out;
+			const std::size_t output_size =
+				tsmf_filter_packet(tsmf_filter_.get(), packets + offset, &out);
+			if (!output_size)
+				continue;
 
-		/* tsmf_filter_packet() は 188 byte の1パケットずつ受け取る。 */
-		size = tsmf_filter_packet(tsmf_filter_.get(), static_cast<const std::uint8_t *>(buf), &out);
-		if (!size)
-			return true;
-
-		ret = ringbuf_.Write(out, size);
-		write_size_ += size;
-		return ret;
+			std::size_t written = output_size;
+			ret = ringbuf_.Write(out, written);
+			size += written;
+			write_size_ += written;
+			if (!ret)
+				return false;
+		}
+		return true;
 	}
 
 	ret = ringbuf_.Write(buf, size);
