@@ -701,6 +701,8 @@ macOS 版は、ユーザー空間デーモン `DriverHost_PX4` として動作�
 | `DriverHost_PX4` | デーモン本体 |
 | `px4rec` | 録画コマンド |
 | `DriverHost_PX4.ini` | 設定ファイル (ビルド時に自動でコピーされる) |
+| `isdbt_rio.inp` | Siano RIO 用ファームウェア (ビルド時に自動でコピーされる) |
+| `LICENCE.siano` | Siano RIO 用ファームウェアの再配布条件 |
 
 ### 3. ファームウェアの配置
 
@@ -751,7 +753,7 @@ macOS 版は、ユーザー空間デーモン `DriverHost_PX4` として動作�
 	$ sudo nohup ./macos/build/DriverHost_PX4 \
 	    > /tmp/DriverHost_PX4.log 2>&1 &
 
-`DriverHost_PX4.ini` と `it930x-firmware.bin` は、実行ファイルと同じ `macos/build/` に配置します。実行時のカレントディレクトリは実行ファイルのディレクトリへ変更されるため、別のディレクトリから絶対パスで起動しても、この配置関係は維持されます。
+`DriverHost_PX4.ini`、`isdbt_rio.inp`、`LICENCE.siano` はビルド時に `macos/build/` へ自動でコピーされます。`it930x-firmware.bin` は実行ファイルと同じ `macos/build/` に手動で配置します。実行時のカレントディレクトリは実行ファイルのディレクトリへ変更されるため、別のディレクトリから絶対パスで起動しても、この配置関係は維持されます。
 
 #### 起動オプション
 
@@ -801,10 +803,10 @@ root で動かす実行ファイルを一般ユーザーが書き換えられる
 **1. ファイルのインストール**
 
 	$ sudo mkdir -p /usr/local/px4_drv
-	$ sudo cp macos/build/DriverHost_PX4 macos/build/px4rec macos/build/DriverHost_PX4.ini macos/build/it930x-firmware.bin /usr/local/px4_drv/
+	$ sudo cp macos/build/DriverHost_PX4 macos/build/px4rec macos/build/DriverHost_PX4.ini macos/build/isdbt_rio.inp macos/build/LICENCE.siano macos/build/it930x-firmware.bin /usr/local/px4_drv/
 	$ sudo chown -R root:wheel /usr/local/px4_drv
 	$ sudo chmod 755 /usr/local/px4_drv /usr/local/px4_drv/DriverHost_PX4 /usr/local/px4_drv/px4rec
-	$ sudo chmod 644 /usr/local/px4_drv/DriverHost_PX4.ini /usr/local/px4_drv/it930x-firmware.bin
+	$ sudo chmod 644 /usr/local/px4_drv/DriverHost_PX4.ini /usr/local/px4_drv/isdbt_rio.inp /usr/local/px4_drv/LICENCE.siano /usr/local/px4_drv/it930x-firmware.bin
 
 **2. LaunchDaemon の作成**
 
