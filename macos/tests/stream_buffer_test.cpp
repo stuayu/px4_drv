@@ -196,6 +196,50 @@ bool TsmfRejectsPartialPacket()
 	return !write_ok && size == 0;
 }
 
+/* USB 側の Write 中に NotifyWrite が write_size_ を同時に更新しない。 */
+bool TsmfNotifyWriteConcurrentWithBatch()
+{
+	StreamBuffer buffer;
+	constexpr std::size_t input_packets = 100000;
+	if (!buffer.Alloc(kPacket * input_packets))
+		return false;
+	buffer.SetThresholdSize(1);
+	buffer.Start();
+	if (!buffer.StartTsmf(0, false, 0)) {
+		buffer.Stop();
+		return false;
+	}
+
+	std::vector<std::uint8_t> packets(kPacket * input_packets, 0);
+	for (std::size_t i = 0; i < input_packets; ++i) {
+		auto *packet = packets.data() + i * kPacket;
+		packet[0] = 0x47;
+		packet[1] = 0x01;
+		packet[2] = static_cast<std::uint8_t>(i);
+	}
+	std::atomic_bool start{false};
+	std::thread writer([&] {
+		while (!start.load(std::memory_order_acquire))
+			std::this_thread::yield();
+		std::size_t size = packets.size();
+		buffer.Write(packets.data(), size);
+		buffer.NotifyWrite();
+	});
+	std::thread tuner([&] {
+		while (!start.load(std::memory_order_acquire))
+			std::this_thread::yield();
+		while (buffer.GetInputPacketCount() < input_packets)
+			std::this_thread::yield();
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		buffer.NotifyWrite();
+	});
+	start.store(true, std::memory_order_release);
+	writer.join();
+	tuner.join();
+	buffer.Stop();
+	return true;
+}
+
 template <typename F>
 bool ReturnsWithin(F &&function)
 {
@@ -692,6 +736,7 @@ int main()
 	ok = ScrambledPacketPassesUnchanged() && ok;
 	ok = TsmfFiltersEveryPacketInBatch() && ok;
 	ok = TsmfRejectsPartialPacket() && ok;
+	ok = TsmfNotifyWriteConcurrentWithBatch() && ok;
 	if (ok)
 		std::puts("stream_buffer_test: passed");
 	return ok ? 0 : 1;

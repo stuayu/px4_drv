@@ -544,15 +544,18 @@ void ReceiverBase::StreamBuffer::NotifyWrite() noexcept
 {
 	bool notify = false;
 
-	// TSMF で選んだ TS は低レートのことがあり、しきい値までためると読み出しが秒単位で遅れるため、出力があるたびに通知する
-	if (tsmf_) {
-		if (write_size_) {
+	{
+		std::lock_guard<std::mutex> lock(tsmf_mtx_);
+		// TSMF で選んだ TS は低レートのことがあり、しきい値までためると読み出しが秒単位で遅れるため、出力があるたびに通知する
+		if (tsmf_) {
+			if (write_size_) {
+				notify = true;
+				write_size_ = 0;
+			}
+		} else if (write_size_ >= threshold_size_) {
 			notify = true;
-			write_size_ = 0;
+			write_size_ -= threshold_size_;
 		}
-	} else if (write_size_ >= threshold_size_) {
-		notify = true;
-		write_size_ -= threshold_size_;
 	}
 
 	if (notify) {
