@@ -80,7 +80,8 @@ int SianoDevice::FindStreamEndpoint(std::uint8_t &endpoint,
 	USB_INTERFACE_DESCRIPTOR interface_descriptor = {};
 	if (!WinUsb_QueryInterfaceSettings(usb_dev_.winusb, 0, &interface_descriptor))
 		return -EIO;
-	/* SMS USB は interface 0 の bulk IN を TS と応答の共通経路に使う。 */
+	/* SMS USB は interface 0 の bulk IN を TS と応答の共通経路に使う。
+	 * 制御用の bulk OUT 0x02 が IN より後に並ぶ記述子もあるため、最初の IN で打ち切らずに全 endpoint を調べる。 */
 	for (UCHAR index = 0; index < interface_descriptor.bNumEndpoints; ++index) {
 		WINUSB_PIPE_INFORMATION pipe = {};
 		if (!WinUsb_QueryPipe(usb_dev_.winusb, 0, index, &pipe))
@@ -89,12 +90,11 @@ int SianoDevice::FindStreamEndpoint(std::uint8_t &endpoint,
 			continue;
 		if (pipe.PipeId == 0x02)
 			has_control_out = true;
-		if (!(pipe.PipeId & 0x80))
+		if (!(pipe.PipeId & 0x80) || endpoint)
 			continue;
 		endpoint = pipe.PipeId;
 		response_alignment = pipe.MaximumPacketSize > 8
 			? static_cast<std::size_t>(pipe.MaximumPacketSize - 8) : 0;
-		break;
 	}
 #elif defined(__APPLE__)
 	libusb_device *usb_device = libusb_get_device(usb_dev_.handle);
@@ -102,7 +102,7 @@ int SianoDevice::FindStreamEndpoint(std::uint8_t &endpoint,
 	int ret = libusb_get_active_config_descriptor(usb_device, &config);
 	if (ret != LIBUSB_SUCCESS)
 		return -EIO;
-	for (std::uint8_t i = 0; i < config->bNumInterfaces && !endpoint; ++i) {
+	for (std::uint8_t i = 0; i < config->bNumInterfaces; ++i) {
 		const auto &interface = config->interface[i];
 		if (!interface.num_altsetting || interface.altsetting[0].bInterfaceNumber != 0)
 			continue;
@@ -114,12 +114,11 @@ int SianoDevice::FindStreamEndpoint(std::uint8_t &endpoint,
 				continue;
 			if (desc.bEndpointAddress == 0x02)
 				has_control_out = true;
-			if (!(desc.bEndpointAddress & LIBUSB_ENDPOINT_IN))
+			if (!(desc.bEndpointAddress & LIBUSB_ENDPOINT_IN) || endpoint)
 				continue;
 			endpoint = desc.bEndpointAddress;
 			const auto max_packet = desc.wMaxPacketSize & 0x07ff;
 			response_alignment = max_packet > 8 ? max_packet - 8 : 0;
-			break;
 		}
 	}
 	libusb_free_config_descriptor(config);
