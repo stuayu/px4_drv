@@ -1,0 +1,44 @@
+;
+; PLEX PX-S1UD / PX-Q1UD Siano RIO WinUSB
+;
+[Version]
+Signature="$Windows NT$"
+Class=Media
+ClassGuid={4d36e96c-e325-11ce-bfc1-08002be10318}
+Provider=%AuthorName%
+DriverVer=11/01/2026,26.11.01.00
+CatalogFile=px4_drv_winusb.cat
+
+[Manufacturer]
+%AuthorName%=SIANORIO_WinUSB,ntx86,ntamd64,ntarm64
+
+[SIANORIO_WinUSB.ntx86]
+%SIANORIO_WinUSB.DeviceDesc%=SIANORIO_WinUSB.DeviceInstall,USB\VID_3275&PID_0080
+
+[SIANORIO_WinUSB.ntamd64]
+%SIANORIO_WinUSB.DeviceDesc%=SIANORIO_WinUSB.DeviceInstall,USB\VID_3275&PID_0080
+
+[SIANORIO_WinUSB.ntarm64]
+%SIANORIO_WinUSB.DeviceDesc%=SIANORIO_WinUSB.DeviceInstall,USB\VID_3275&PID_0080
+
+[SIANORIO_WinUSB.DeviceInstall]
+Include=winusb.inf
+Needs=WINUSB.NT
+AddProperty=SIANORIO_WinUSB.DeviceSetup.AddProperty
+
+[SIANORIO_WinUSB.DeviceInstall.Services]
+Include=winusb.inf
+Needs=WINUSB.NT.Services
+
+[SIANORIO_WinUSB.DeviceInstall.HW]
+AddReg=SIANORIO_WinUSB.DeviceSetup.AddReg
+
+[SIANORIO_WinUSB.DeviceSetup.AddReg]
+HKR,,DeviceInterfaceGUIDs,0x00010000,"{46B7CEBB-B23F-4F4D-9C99-680F37950977}"
+
+[SIANORIO_WinUSB.DeviceSetup.AddProperty]
+{afd97640-86a3-4210-b67c-289c41aabe55},3,0x00000011,,0   ; DEVPKEY_Device_SafeRemovalRequiredOverride=FALSE
+
+[Strings]
+AuthorName="px4_drv"
+SIANORIO_WinUSB.DeviceDesc="PLEX PX-S1UD / PX-Q1UD ISDB-T Receiver Device (WinUSB)"

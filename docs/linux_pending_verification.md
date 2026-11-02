@@ -32,13 +32,13 @@ Windows 検証環境には Linux カーネルのヘッダーがないため、`d
 
 ### PXMLT 系のロック後待機
 
-`driver/pxmlt_device.c` の `chrdev_config[i].options` へ `PTX_CHRDEV_WAIT_AFTER_LOCK_TC_T` を追加しました。  
+`driver/linux/pxmlt_device.c` の `chrdev_config[i].options` へ `PTX_CHRDEV_WAIT_AFTER_LOCK_TC_T` を追加しました。  
 PXMLT 系だけがこのフラグを持たず、ISDB2056 系、PX-M1UR、PX-S1UR、PX4 系はいずれも設定済みという非対称がありました。
 
 根拠は WinUSB 版での実測です。  
 PX-MLT5PE で ch8 と ch14 を往復すると、待機なしでは12周期65万パケットに対し同期エラー4件と transport error 14件が出ましたが、待機を入れると32周期176万パケットで両方とも0件になりました。  
 CXD2856ER のロック判定はレジスタを1回読むだけで整定を待たないため、復調が安定する前の TS がそのまま流れることが原因です。  
-Linux 版も同じ復調器を同じ判定方法で扱っており、待機の実装 (`driver/ptx_chrdev.c`) も WinUSB 版と同じ構造です。
+Linux 版も同じ復調器を同じ判定方法で扱っており、待機の実装 (`driver/linux/ptx_chrdev.c`) も WinUSB 版と同じ構造です。
 
 確認すること。
 

@@ -104,7 +104,7 @@ TS が止まってからクライアントが停止するまで20周期を要し
 
 ## Linux 版への横展開
 
-Linux 版 (`driver/ringbuffer.c`) には、受信を続けたままバッファを初期化する操作そのものがありません。  
+Linux 版 (`driver/linux/ringbuffer.c`) には、受信を続けたままバッファを初期化する操作そのものがありません。  
 `ringbuffer_reset()`、`ringbuffer_alloc()`、`ringbuffer_free()` はいずれも冒頭で `state` を確認し、動作中であれば `-EBUSY` を返して何もしません。  
 初期化が走るのは受信が停止している状態に限られるため、読み書きと重なる状況が生じません。
 

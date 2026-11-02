@@ -1,0 +1,63 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+#pragma once
+
+#include <atomic>
+#include <condition_variable>
+#include <filesystem>
+#include <memory>
+#include <mutex>
+#include <string>
+
+#include "device_base.hpp"
+#include "itedtv_bus.h"
+#include "siano_protocol.hpp"
+
+namespace px4 {
+
+/* PX-S1UD V2.0 / PX-Q1UD は Siano RIO の USB 機能ごとに登録し、1 機能を1受信機として扱う。 */
+class SianoDevice final : public DeviceBase {
+public:
+	SianoDevice(const std::wstring &path, const DeviceDefinition &definition,
+		    std::uintptr_t index, ReceiverManager &receiver_manager);
+	~SianoDevice() override;
+
+	int Init() override;
+	void Term() override;
+	void SetAvailability(bool available) override;
+	ReceiverBase *GetReceiver(int id) const override;
+
+private:
+	class Receiver;
+	class BusTransport;
+
+	int FindStreamEndpoint(std::uint8_t &endpoint, std::size_t &response_alignment) const;
+	int StartUsbStream();
+	int StopUsbStream();
+	int EnsureProtocolInitialized(
+		std::chrono::milliseconds timeout = std::chrono::seconds(30));
+	int SendControl(const std::uint8_t *message, std::size_t length,
+			std::uint32_t timeout_ms) noexcept;
+	static int StreamHandler(void *context, void *data, std::uint32_t size);
+
+	std::recursive_mutex mutex_;
+	std::condition_variable_any close_cond_;
+	std::unique_ptr<Receiver> receiver_;
+	std::shared_ptr<ReceiverBase::StreamBuffer> buffer_;
+	std::unique_ptr<BusTransport> transport_;
+	std::unique_ptr<siano::Protocol> protocol_;
+	itedtv_bus stream_bus_ = {};
+	std::filesystem::path firmware_path_;
+	std::size_t response_alignment_ = 0;
+	std::size_t receiver_packets_ = 16384;
+	std::uint8_t stream_endpoint_ = 0;
+	std::atomic_bool available_{true};
+	std::atomic_bool initialized_{false};
+	std::atomic_bool stream_failed_{false};
+	bool bus_initialized_ = false;
+	bool streaming_ = false;
+	bool protocol_initialized_ = false;
+	bool receiver_open_ = false;
+	std::atomic_bool capture_enabled_{false};
+};
+
+} // namespace px4

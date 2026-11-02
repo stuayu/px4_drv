@@ -8,6 +8,7 @@
 #include <memory>
 #include <thread>
 #include <stdexcept>
+#include <string>
 
 #include <windows.h>
 

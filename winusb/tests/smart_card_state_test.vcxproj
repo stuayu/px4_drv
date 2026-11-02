@@ -35,7 +35,7 @@
   <PropertyGroup>
     <OutDir>$(MSBuildThisFileDirectory)..\build\$(PlatformTarget)\$(Configuration)\</OutDir>
     <IntDir>$(MSBuildThisFileDirectory)build\smart_card_state_test\$(PlatformTarget)\$(Configuration)\</IntDir>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(MSBuildThisFileDirectory)..\..\driver;$(MSBuildThisFileDirectory)..\src\common;$(MSBuildThisFileDirectory)..\src\DriverHost_PX4</IncludePath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(MSBuildThisFileDirectory)..\..\driver\common\include;$(MSBuildThisFileDirectory)..\..\driver\common\bridge;$(MSBuildThisFileDirectory)..\..\driver\common\demod;$(MSBuildThisFileDirectory)..\..\driver\common\tuner;$(MSBuildThisFileDirectory)..\..\driver\common\ts;$(MSBuildThisFileDirectory)..\src\common;$(MSBuildThisFileDirectory)..\..\host\common;$(MSBuildThisFileDirectory)..\..\host\core;$(MSBuildThisFileDirectory)..\..\host\devices;$(MSBuildThisFileDirectory)..\src\DriverHost_PX4</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
@@ -58,11 +58,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="smart_card_state_test.cpp" />
-    <ClCompile Include="..\src\DriverHost_PX4\smart_card.cpp" />
+    <ClCompile Include="..\..\host\core\smart_card.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\src\DriverHost_PX4\card_device.hpp" />
-    <ClInclude Include="..\src\DriverHost_PX4\smart_card.hpp" />
+    <ClInclude Include="..\..\host\core\card_device.hpp" />
+    <ClInclude Include="..\..\host\core\smart_card.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

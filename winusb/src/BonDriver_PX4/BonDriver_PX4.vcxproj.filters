@@ -62,25 +62,25 @@
     <ClInclude Include="..\..\include\IBonDriver2.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\command.hpp">
+    <ClInclude Include="..\..\..\host\common\command.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\config.hpp">
+    <ClInclude Include="..\..\..\host\common\config.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\msg.h">
+    <ClInclude Include="..\..\..\host\common\msg.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\pipe.hpp">
+    <ClInclude Include="..\..\..\host\common\pipe.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="..\common\security_attributes.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\type.hpp">
+    <ClInclude Include="..\..\..\host\common\type.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\util.hpp">
+    <ClInclude Include="..\..\..\host\common\util.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="bon_driver.hpp">

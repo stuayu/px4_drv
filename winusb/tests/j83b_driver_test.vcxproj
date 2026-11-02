@@ -23,16 +23,17 @@
   <PropertyGroup>
     <OutDir>$(MSBuildThisFileDirectory)..\build\$(PlatformTarget)\$(Configuration)\</OutDir>
     <IntDir>$(MSBuildThisFileDirectory)build\j83b_driver_test\$(PlatformTarget)\$(Configuration)\</IntDir>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(MSBuildThisFileDirectory)..\src\common;$(MSBuildThisFileDirectory)..\src\DriverHost_PX4;$(MSBuildThisFileDirectory)..\..\driver</IncludePath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(MSBuildThisFileDirectory)..\..\host\common;$(MSBuildThisFileDirectory)..\src\DriverHost_PX4;$(MSBuildThisFileDirectory)..\..\driver\common\include;$(MSBuildThisFileDirectory)..\..\driver\common\demod;$(MSBuildThisFileDirectory)..\..\driver\common\signal</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile><WarningLevel>Level4</WarningLevel><RuntimeLibrary>MultiThreaded</RuntimeLibrary><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions></ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="j83b_driver_test.c" />
-    <ClCompile Include="..\..\driver\cxd2856er.c" />
-    <ClCompile Include="..\..\driver\cxd2858er.c" />
+    <ClCompile Include="..\..\driver\common\demod\cxd2856er.c" />
+    <ClCompile Include="..\..\driver\common\demod\cxd2858er.c" />
     <ClCompile Include="..\src\common\msg.c" />
+    <ClCompile Include="..\..\host\common\msg_log.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

@@ -27,4 +27,6 @@ fwtool/*.bin
 !.vscode/c_cpp_properties.json
 /.vs/
 
+macos/build/**
 .codex*
+.DS_Store

@@ -16,10 +16,22 @@ PipeServer::PipeServer() noexcept
 
 PipeServer::~PipeServer()
 {
-	if (!IsConnected())
+	if (!IsConnected() || shutdown_)
 		return;
 
 	FlushFileBuffers(handle_);
+	DisconnectNamedPipe(handle_);
+	shutdown_ = true;
+}
+
+void PipeServer::Shutdown() noexcept
+{
+	if (!IsConnected() || shutdown_)
+		return;
+
+	/* ReadFile が別スレッドで待機中でも、この接続だけを閉じて BonDriver へ失敗を返す。 */
+	shutdown_ = true;
+	CancelIoEx(handle_, nullptr);
 	DisconnectNamedPipe(handle_);
 }
 

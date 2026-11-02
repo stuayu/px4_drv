@@ -1,7 +1,72 @@
-# px4_drv - Unofficial Linux / Windows (WinUSB) driver for PLEX PX4/PX5/PX-MLT series / e-Better DTV series ISDB-T/S/C receivers
+# px4_drv - Unofficial Linux / Windows (WinUSB) / macOS driver for PLEX PX4/PX5/PX-MLT series / e-Better DTV series ISDB-T/S/C receivers
 
-PLEX や e-Better から発売された各種 ISDB-T/S/C チューナー向けの chardev 版非公式 Linux ドライバ / Windows (WinUSB) ドライバです。  
+PLEX や e-Better から発売された各種 ISDB-T/S/C チューナー向けの chardev 版非公式 Linux ドライバ / Windows (WinUSB) ドライバ / macOS 版 DriverHost_PX4 です。  
 PLEX 社の [Webサイト](http://plex-net.co.jp) にて配布されている公式ドライバとは**別物**です。
+
+## 構成と OS 境界
+
+| パス | 役割 | 利用 OS |
+|---|---|---|
+| `driver/common/` | IT930x、復調器、チューナー、TS、固定小数点の信号計算など、OS 非依存の C コード | Linux カーネル / WinUSB / macOS |
+| `driver/linux/` | USB 登録、カーネル内受信スレッド、chardev、ioctl、Linux の電源・寿命管理 | Linux |
+| `host/common/`, `host/core/`, `host/devices/` | 共通の C++ デバイス、受信機、制御・配信サーバー | WinUSB / macOS |
+| `winusb/` | WinUSB 転送、BonDriver、WinSCard、INF、Windows ビルドと配布 | Windows |
+| `macos/` | libusb / POSIX 転送、Unix socket、`px4rec`、macOS ビルド | macOS |
+| `fwtool/`, `tools/` | ファームウェア補助、診断・TS 解析ツール | ツールごとに異なる |
+| `tests/`, `winusb/tests/`, `macos/tests/` | 共通プロトコル、状態遷移、OS 別ビルドの自動試験 | 対象ごとに異なる |
+| `docs/` | 検証記録、機種別の手順、設計計画 | 全 OS |
+
+`driver/common/` はハードウェア制御の共有部です。USB API、カーネル chardev、BonDriver、socket は OS ごとの境界に残し、受信機の生成は `host/core/device_factory.cpp` に集約しています。ファイル移動と段階別の完了状況は [再構成計画](docs/restructure_plan.md)を参照してください。
+
+## 対応状況
+
+次表の `○` はドライバ経路が実装済み、`△` は実装または実機確認に未完了条件がある状態、`—` はその OS の実装がない状態です。INI に製品名があるだけでは受信経路の実装と判定しません。
+
+| 機種群 | Linux | Windows (WinUSB) | macOS | 未完了条件 |
+|---|:---:|:---:|:---:|---|
+| PLEX PX4 系 | ○ | ○ | ○ | 製品ごとの機能差は各設定を参照 |
+| PLEX PX-MLT 系 / DTV02A-4TS-P / DTV02A-5TS-P | ○ | ○ | ○ | ISDB-C / J.83B は [ケーブルテレビ (ISDB-C) / スカパー！プレミアムサービス光 (J.83B) の受信](#ケーブルテレビ-isdb-c--スカパープレミアムサービス光-j83b-の受信) を参照 |
+| ISDB2056 / ISDBT2071 | ○ | ○ | ○ | 製品・ロットごとの検証範囲は別紙を参照 |
+| MyGica T230C 系 (USB `0572:c68a` は Linux の ID 表で T230C2) | △ | △ | △ | ISDB-C のみ (実験的)。Linux と macOS は実機未確認。J.83B の対応を示す根拠なし |
+| Siano RIO (PX-S1UD V2.0 / PX-Q1UD 系) | ○ | ○ | ○ | firmware・製品リビジョン別の確認範囲は [Siano の別紙](docs/siano_tuners.md)を参照 |
+
+T230C 系は、3 OS とも受信経路を持ちますが、Linux と Windows の実機確認が残っています。
+
+## 機種別資料
+
+- [ISDB-C と J.83 Annex B の選局の仕様](docs/isdbc_tuning.md)
+- [T230C / T230C2 の Linux 参照手順と方式の制限](docs/t230c_linux_reference.md)
+- [Siano RIO と対応チューナー](docs/siano_tuners.md)
+
+## 診断ログ
+
+WinUSB / macOS の DriverHost_PX4 は `LogLevel` (`error`, `warn`, `info`, `debug`, `trace`)、`LogCategories` (`usb`, `i2c`, `demod`, `tuner`, `ts`, `card`, `auth`, `server`, `device`)、`LogFormat` (`text`, `jsonl`) を設定できます。TS 統計は `LogStatsInterval` を秒数で指定すると有効になり、USB 転送履歴は `LogUsbHistory=true` または `LogLevel=trace` で保持し、転送失敗時に直近の履歴を出力します。
+
+```ini
+[DriverHost_PX4]
+LogLevel=debug
+LogCategories=usb,i2c,demod,tuner,ts,card,auth,server,device
+LogFormat=jsonl
+LogStatsInterval=10
+LogUsbHistory=true
+```
+
+Windows では DriverHost_PX4 のログをデバッガー出力 (`OutputDebugString`) へ出力するため、DebugView などで記録します。macOS では DriverHost_PX4 の標準エラーへ出力します。Linux 版はカーネルの `dev_err` / `dev_warn` / `dev_info` / dynamic debug を使います。周期統計は既定で無効です。ログ整形と出力は呼び出し元スレッドで同期実行されるため、受信品質を測るときはログ有効状態も記録してください。
+
+USB 履歴には各転送の先頭 16 byte が含まれる場合があります。カード通信やサービス情報を含む可能性があるため、共有前に payload を確認・マスクしてください。統計出力は既定で無効です。受信中に USB payload の trace を有効にした測定は、出力負荷を含む条件として記録してください。
+
+### 選局から最初の TS までの時間
+
+DriverHost_PX4 の `Tune timing` 行には、周波数設定完了 (`set_ms`)、ロック確認 (`lock_ms`)、最初の TS packet (`first_ts_ms`) の経過時間が入ります。ログを複数回分まとめるときは次のツールで system / 周波数ごとの件数、中央値、p95、最大値を集計できます。p95 は nearest-rank 方式です。
+
+```sh
+python3 tools/tune_latency.py DriverHost_PX4.log
+python3 tools/tune_latency.py --json DriverHost_PX4.log
+```
+
+このツールは保存済みログだけを読み、チューナーへの接続や選局は行いません。最適化前後を比べる際は、同じ機種・周波数・信号経路・受信負荷で記録したログを使ってください。
+
+`BonDriver_PX4::GetSignalLevel()` は既存互換のため C/N を dB 単位で返します。校正済み RF 入力電力 (dBm) として解釈しないでください。C/N 換算は WinUSB / macOS のホスト受信機で共通 C 関数を使います。Linux の `PTX_GET_CNR` は PT1/PT3 互換の値を返す既存の ioctl で、全機種共通の統計 API とは異なります。CXD2856ER ISDB-C では valid BER を記録します。PER の分母が確定していない機種は raw count のまま記録し、他チップの BER / PER と統計 API への接続は未完了です。
 
 ## このフォークについて
 
@@ -23,6 +88,9 @@ PLEX 社の [Webサイト](http://plex-net.co.jp) にて配布されている公
 - PX-MLT 系チューナー (PX-MLT5PE / PX-MLT8PE / DTV02A-4TS-P / DTV02A-5TS-P) において、ケーブルテレビ (トランスモジュレーション方式: ISDB-C) とスカパー！プレミアムサービス光 (J.83 Annex B) の受信に対応 (v0.7.0 以降)
   - [n0atl 氏のフォーク](https://github.com/n0atl/px4_drv) と [aoiro-labo 氏のフォーク](https://github.com/aoiro-labo/px4_drv) で進められていた対応を基にしている
   - 受信方法は [ケーブルテレビ (ISDB-C) / スカパー！プレミアムサービス光 (J.83B) の受信](#ケーブルテレビ-isdb-c--スカパープレミアムサービス光-j83b-の受信) を参照のこと
+- Siano RIO 系の PX-S1UD V2.0 / PX-Q1UD に対応し、inf ファイルを追加 (実験的)
+- MyGica T230C (USB `0572:c68a`) の ISDB-C 受信に対応し、inf ファイルを追加 (実験的)
+- DriverHost_PX4 に、ログレベル・カテゴリ・JSON Lines 形式の出力、TS 統計、選局から最初の TS までの時間の内訳、USB 転送履歴を追加
 
 #### 設定ファイル・ドライバ構成ファイルの改善
 
@@ -67,6 +135,14 @@ PLEX 社の [Webサイト](http://plex-net.co.jp) にて配布されている公
   - Visual Studio 2022 が入っていれば、build.ps1 を実行するだけで全自動でビルドからパッケージングまで行える
 - fwtool: PX-W3PE5 / PX-Q3PE4 / PX-Q3PE5 / PX-W3U4 / PX-Q3U4 / PX-MLT5PE / PX-MLT8PE の2021年版公式 Windows ドライバからのファームウェア抽出に対応 (v0.6.0 以降)
   - 既定の抽出済みファームウェアで問題なく動作することが知られているため、特段実用性はない
+
+### 変更点 (macOS 版)
+
+- Apple Silicon (ARM) および Intel Mac 向けのユーザー空間デーモン `DriverHost_PX4` と、録画コマンド `px4rec` を追加
+  - libusb を用いた USB デバイスアクセスと、UNIX ドメインソケットによる IPC を実装
+  - Windows WinUSB 版と `host/` の受信機・サーバー実装を共有します。利用できる機種は上の対応状況表で確認してください
+- `px4rec C` による ISDB-C の選局と、TSMF の TS 番号の指定に対応 (実験的)
+
 ### 変更点 (Linux 版)
 
 動作確認は Ubuntu 22.04 LTS (x64) で行っています。
@@ -83,6 +159,8 @@ PLEX 社の [Webサイト](http://plex-net.co.jp) にて配布されている公
   - pcscd が既定で認識している外付けカードリーダーも引き続き利用できる
 -  PX-MLT 系チューナー (PX-MLT5PE / PX-MLT8PE / DTV02A-4TS-P / DTV02A-5TS-P) において、WinUSB 版と同じくケーブルテレビ (トランスモジュレーション方式: ISDB-C) とスカパー！プレミアムサービス光 (J.83 Annex B) の受信に対応 (v0.7.0 以降)
   - 受信方法は [ケーブルテレビ (ISDB-C) / スカパー！プレミアムサービス光 (J.83B) の受信](#ケーブルテレビ-isdb-c--スカパープレミアムサービス光-j83b-の受信) を参照のこと
+- Siano RIO 系の PX-S1UD V2.0 / PX-Q1UD と、MyGica T230C2 の ISDB-C 受信を `/dev/px4video*` として追加 (実験的、カーネルビルドのみ確認)
+- ソースコードを OS 非依存の `driver/common/` と Linux 固有の `driver/linux/` に分け、WinUSB 版・macOS 版とチップ制御のコードを共有
 
 #### ドライバの品質改善
 
@@ -133,6 +211,11 @@ PLEX 社の [Webサイト](http://plex-net.co.jp) にて配布されている公
 	- PX-MLT8PE
     - PX-M1UR
     - PX-S1UR
+    - PX-S1UD V2.0 / PX-Q1UD (実験的)
+
+- MyGica
+
+	- T230C 系 (USB `0572:c68a` の個体は T230C2、ISDB-C のみ・実験的)
 
 - e-Better
 
@@ -150,6 +233,7 @@ PLEX 社の [Webサイト](http://plex-net.co.jp) にて配布されている公
 > 
 > - PLEX PX-M1UR
 > - PLEX PX-S1UR
+> - PLEX PX-S1UD V2.0 / PX-Q1UD (Siano RIO、実験的)
 > - e-Better DTV02A-5TS-P (PX-MLT5PE のリブランド品)
 > - e-Better DTV02A-1T1S-U / Digibest ISDB2056 (Windows 版ドライバを新規追加)
 > - e-Better DTV02A-1T1S-U (ロット番号 2309 以降) / Digibest ISDB2056N
@@ -159,6 +243,8 @@ PLEX 社の [Webサイト](http://plex-net.co.jp) にて配布されている公
 > PX-M1UR または DTV02(A)-1T1S-U で CATV（周波数変換パススルー）の ISDB-T C13ch ~ C24ch を受信するには、[専用の recpt1 フォーク (hendecarows/recpt1)](https://github.com/hendecarows/recpt1) が必要となります。  
 > [stz2012/recpt1](https://github.com/stz2012/recpt1) や [recisdb](https://github.com/kazuki0824/recisdb-rs) では、当該機種にて C13ch ~ C62ch を正常に選局できないことが報告されています（[詳細はこちら](https://github.com/tsukumijima/px4_drv/issues/16)）。  
 > ただし、C13ch ~ C24ch 以外のチャンネルであれば、stz2012/recpt1 や recisdb でも問題なく選局・受信が可能です。
+
+PX-S1UD V2.0 / PX-Q1UD は Siano RIO 系の別プロトコルです。Windows/macOS DriverHost と Linux px4_drv の `/dev/px4video*` 経路、ファームウェア、検証状況は [Siano チューナーの説明](docs/siano_tuners.md)を参照してください。Linux 標準 `smsusb` ドライバーも同じ USB ID を扱うため、同じ USB function はどちらか一方のドライバーへ割り当てます。
 
 ## インストール (Windows)
 
@@ -198,9 +284,12 @@ certutil.exe -addstore TrustedPublisher ".\px4_drv_winusb.cer"
 - DTV03A-1TU: `BonDriver_ISDBT2071`
 - PX-M1UR: `BonDriver_PX-M1UR`
 - PX-S1UR: `BonDriver_PX-S1UR`
+- PX-S1UD V2.0: `BonDriver_PX-S1UD` (実験的)
+- PX-Q1UD: `BonDriver_PX-Q1UD` (実験的、4チューナーの並列受信は実機未確認)
+- MyGica T230C (0572:C68A): `BonDriver_T230C` (実験的、ISDB-C のみ)
 
 お使いの PC に合うビット数のフォルダの中のファイルを**すべて**選択し、TVTest や EDCB などのソフトウェアが指定する BonDriver の配置フォルダにコピーします。  
-BonDriver と同じフォルダに DriverHost_PX4.exe / DriverHost_PX4.ini / it930x-firmware.bin があることを確認してください。
+BonDriver と同じフォルダに DriverHost_PX4.exe / DriverHost_PX4.ini / it930x-firmware.bin があることを確認してください。Siano RIO のパッケージには `isdbt_rio.inp` と `LICENCE.siano` も含まれます。T230C の Si2168 / Si2141 のファームウェアは再配布できないため、[T230C の説明](docs/t230c.md)に従って配置してください。
 
 使用にあたり、特段 ini ファイルの設定変更などは必要ありません。ソフトウェアごとにチャンネルスキャンを行えばそのまま視聴できます。  
 なお、BonDriver の ini ファイル内の `DisplayErrorMessage` を 1 に設定すると、オリジナル同様にエラー発生時にメッセージボックスを表示します。
@@ -208,6 +297,8 @@ BonDriver と同じフォルダに DriverHost_PX4.exe / DriverHost_PX4.ini / it9
 ### 4. 内蔵 B-CAS カードリーダーの利用
 
 **v0.6.0 以降、winUSB 版 px4_drv 専用の WinSCard.dll を TVTest.exe や EpgDataCap_Bon.exe と同じフォルダに配置することで、内蔵カードリーダーが利用できるようになりました！**
+
+PX-S1UD V2.0、PX-Q1UD、MyGica T230C は内蔵カードリーダーを搭載していないため、B-CAS カードには外付けカードリーダーが必要です。
 
 機種別の BonDriver フォルダに同梱されている `WinSCard.dll` を、TVTest や EDCB など、B-CAS カードを利用するアプリケーションの実行ファイルと同じフォルダにコピーしてください。
 
@@ -559,6 +650,357 @@ Mirakurun の場合は、環境変数 `DISABLE_PCSCD=1` を設定した上で、
 > 必ず `/var/run/pcscd` ディレクトリごとコンテナへマウントしてください。  
 > また、ホストとコンテナの pcsc-lite のバージョンが大きく異なると接続できないことがあります。その場合は、コンテナ内で pcscd を動かす構成を検討してください。
 
+## インストール (macOS)
+
+macOS 版は、ユーザー空間デーモン `DriverHost_PX4` として動作します。  
+デーモンが起動すると、UNIX ドメインソケット (`/tmp/px4_ctrl_pipe.sock`, `/tmp/px4_data_pipe.sock`) 経由でチューナーの制御・TS データの取得が可能になります。
+
+あわせて、デーモンのクライアントとして機能する `px4rec` コマンドも同時にビルドされます。  
+`px4rec` は録画した TS データを stdout または指定ファイルに出力するシンプルなコマンドラインツールで、Linux の `recpt1` に相当する役割を担います。
+
+受信ソケットの予期しない切断、出力の書き込み、B25 処理または受信停止が失敗した場合、`px4rec` はエラーを標準エラー出力へ記録し、非ゼロの終了コードを返します。指定時間の終了や終了シグナルによる停止は、後処理が成功すれば終了コード 0 です。
+`DriverHost_PX4` は、USB の TS 受信転送がすべて異常終了して受信を続けられなくなった場合、受信済みのデータを送り終えてからデータソケットを閉じます。録画クライアントは無受信が続く状態ではなく切断として検知でき、`px4rec` は上記の予期しない切断として非ゼロで終了します。一部の転送だけが異常終了した場合は、残りの転送で受信を続けます。PX-W3U4 や PX-MLT5PE など、複数のチューナーが1つの USB 受信を共有する機種で異常終了した後は、全チューナーの受信を閉じるまで追加の受信開始が失敗し、`px4rec` は非ゼロで終了します。
+`-i`、`-d` とチャンネル番号には整数を指定します。未知のオプションや余分な引数はエラーになり、`-` で始まる出力ファイル名は `./-name` のように指定できます。
+
+`DriverHost_PX4` は、macOS のドライバから USB デバイスを切り離して取得するため、**root 権限 (`sudo`) で起動する必要があります**。
+デーモンが作成するソケットは全ユーザーが接続できるため、`px4rec` や Mirakurun は一般ユーザーのままで利用できます。
+
+`px4rec` は、制御ソケットに接続できない場合に、同じディレクトリに配置された `DriverHost_PX4` を自動起動してから再接続を試みます。
+ただし、自動起動されるデーモンは `px4rec` と同じユーザーで動くため、`px4rec` を一般ユーザーで実行している場合はチューナーを取得できません。**デーモンはあらかじめ `sudo` または launchd で起動しておいてください。**
+
+> [!IMPORTANT]
+> **Linux の `/dev/px4video*` との互換性について**
+>
+> Linux ドライバは `ioctl()` によって制御するキャラクタデバイスを提供しますが、macOS ではユーザー空間からカーネル拡張なしに `/dev/*` デバイスノードを作成することはできません。  
+> このため、`recpt1` や `recisdb` などの既存 Linux バイナリをそのまま macOS で使用することはできません。
+>
+> 代わりに、同梱の `px4rec` コマンドを `recpt1` の代わりに使用するか、`mirakurun` の `command:` 設定に `px4rec` を指定することで、同等の機能を利用できます。
+
+### 1. 前提条件のインストール
+
+[Homebrew](https://brew.sh/) がインストールされている必要があります。
+
+	$ xcode-select --install            # Xcode コマンドラインツール (未インストールの場合)
+	$ brew install cmake libusb
+
+### 2. ソースコードの取得とビルド
+
+	$ git clone https://github.com/stuayu/px4_drv.git
+	$ cd px4_drv
+	$ cmake -S macos -B macos/build -DCMAKE_BUILD_TYPE=Release
+	$ cmake --build macos/build
+
+以降のコマンドは、すべてリポジトリのルート (`px4_drv/`) で実行します。
+
+ビルドが成功すると `macos/build/` に次のファイルが生成されます。
+
+| ファイル | 内容 |
+| --- | --- |
+| `DriverHost_PX4` | デーモン本体 |
+| `px4rec` | 録画コマンド |
+| `DriverHost_PX4.ini` | 設定ファイル (ビルド時に自動でコピーされる) |
+
+### 3. ファームウェアの配置
+
+`it930x-firmware.bin` を `macos/build/` に置きます。ファームウェアは自動ではコピーされません。
+リポジトリに同梱している抽出済みのファームウェアを使う場合は、次のコマンドだけで完了です。
+
+	$ cp etc/it930x-firmware.bin macos/build/
+
+公式ドライバから自分で抽出する場合は、同梱ファームウェアをコピーする代わりに次を実行します。
+
+	$ make -C fwtool
+	$ curl -L -o pxw3u4_BDA_ver1x64.zip http://plex-net.co.jp/plex/pxw3u4/pxw3u4_BDA_ver1x64.zip
+	$ unzip -oj pxw3u4_BDA_ver1x64.zip pxw3u4_BDA_ver1x64/PXW3U4.sys && rm pxw3u4_BDA_ver1x64.zip
+	$ ./fwtool/fwtool PXW3U4.sys macos/build/it930x-firmware.bin && rm PXW3U4.sys
+
+### 4. 動作確認
+
+インストールする前に、ビルドしたものが動くことを確認します。チューナーを接続し、`sudo` を付けてデーモンを起動します。
+
+	$ sudo ./macos/build/DriverHost_PX4
+
+`DriverHost_PX4 started. (resident)` と表示され、`libusb_claim_interface() failed` が出ていなければ、チューナーを取得できています。
+デーモンを動かしたまま別のターミナルを開き、地上波の物理チャンネル (下の例では 27) を 10 秒録画します。
+
+	$ cd px4_drv
+	$ ./macos/build/px4rec -d 10 T 27 test.ts
+	$ ls -l test.ts
+
+`test.ts` が 20 MB 前後のサイズで作られていれば受信できています。チャンネル番号は、お住まいの地域で受信できる物理チャンネルに置き換えてください。確認が済んだら、デーモンを起動したターミナルで `Ctrl-C` を押して終了します。
+
+### 5. デーモンの起動
+
+常用する場合は、下の「[システムへインストールして launchd で起動](#システムへインストールして-launchd-で起動)」の手順で登録してください。Mac の起動時に root 権限で自動的に起動します。
+
+`DriverHost_PX4` は root 権限で起動します。一般ユーザーで起動してもプロセスは動きますが、チューナーを取得できず、ログに `libusb_claim_interface() failed` と表示されます。
+
+`px4rec` 実行時に `DriverHost_PX4` が起動していなければ、同じディレクトリにある `DriverHost_PX4` が自動起動されますが、`px4rec` と同じユーザーで動きます。`px4rec` を `sudo` で実行した場合に限り、自動起動されたデーモンがチューナーを取得でき、`px4rec` の終了後も常駐し続けます。
+
+#### 手動起動
+
+デーモンを手動で起動する場合は、`sudo` を付けて実行します。バックグラウンドで起動するとパスワードを入力できないため、先に `sudo -v` で認証を済ませておきます。
+
+	$ sudo -v
+	$ sudo ./macos/build/DriverHost_PX4 &
+
+標準出力と標準エラー出力をログへ保存する場合は、次のように起動します。
+
+	$ sudo nohup ./macos/build/DriverHost_PX4 \
+	    > /tmp/DriverHost_PX4.log 2>&1 &
+
+`DriverHost_PX4.ini` と `it930x-firmware.bin` は、実行ファイルと同じ `macos/build/` に配置します。実行時のカレントディレクトリは実行ファイルのディレクトリへ変更されるため、別のディレクトリから絶対パスで起動しても、この配置関係は維持されます。
+
+#### 起動オプション
+
+| オプション | 説明 |
+| --- | --- |
+| `-t <秒>`, `--idle-timeout=<秒>` | 接続がない状態がこの秒数続いたときに終了する (既定値: `0` = 終了せず常駐) |
+| `-r`, `--resident` | クライアントが接続していなくても終了せず常駐する (`--idle-timeout=0` と同じ。既定の動作) |
+| `-h`, `--help` | 使い方を表示する |
+
+既定では、クライアントが接続していなくてもデーモンは終了せず常駐します。
+
+使っていないときはデーモンを終了させたい場合は、無接続のまま待つ秒数を指定します。次の例では、最後のクライアントが切断されてから 300 秒後に終了します。
+
+	$ sudo ./macos/build/DriverHost_PX4 --idle-timeout=300 &
+
+デーモンは `SIGINT` または `SIGTERM` で終了処理を開始し、受信の停止とソケットの削除を行ってから終了します。`kill -9` で停止すると、この後始末を行いません。
+
+	$ sudo kill $(pgrep -f macos/build/DriverHost_PX4)
+
+#### デーモンの動作
+
+デーモンは次の UNIX ドメインソケットを作成します。
+
+| 用途 | ソケット |
+| --- | --- |
+| チューナー制御 | `/tmp/px4_ctrl_pipe.sock` |
+| TS データ取得 | `/tmp/px4_data_pipe.sock` |
+
+ソケットのパーミッションは `0666` で、この Mac にログインできるユーザーであれば誰でもチューナーを利用できます。
+
+既定では、接続の有無にかかわらずデーモンは終了しません。`--idle-timeout` に 1 以上の秒数を指定した場合に限り、最後のクライアントが切断されてから 1 秒間隔で接続数を確認し、無接続のまま指定した秒数が経過したときに終了します。制御接続またはデータ接続が 1 つでも残っている間は終了しません。複数の `px4rec` や Mirakurun の録画処理から同時に接続できます。
+
+同じデーモンを複数起動することはできません。2つ目のプロセスはロックファイル `/tmp/px4_drv_host.lock` で既存プロセスを検出し、終了します。
+
+制御・データ・カードソケットとロックファイルの配置先は `PX4_RUNTIME_DIR` で変更できます。
+指定先のディレクトリはデーモン起動前に作成してください。未指定時は従来どおり `/tmp` を使用します。
+recisdb-proxy から接続する場合は、`px4daemon:` の `@` に同じディレクトリの `px4_ctrl_pipe.sock` を指定し、
+`PX4_CARD_SOCKET` に `px4_card_pipe.sock` のパスを設定してください。
+`px4rec` も同じ `PX4_RUNTIME_DIR` を参照するので、デーモンと同じ値を設定して実行します。
+
+#### システムへインストールして launchd で起動
+
+ビルドした一式を root 所有のディレクトリへインストールし、LaunchDaemon として登録します。Mac の起動時に root 権限で起動し、ログインしていなくても動作します。異常終了したときは launchd が再起動します。
+
+root で動かす実行ファイルを一般ユーザーが書き換えられる場所 (ホームディレクトリ以下の `macos/build/` など) に置いたまま登録すると、そのユーザーが root 権限を得られてしまいます。必ず root 所有のディレクトリへコピーしてください。
+
+**1. ファイルのインストール**
+
+	$ sudo mkdir -p /usr/local/px4_drv
+	$ sudo cp macos/build/DriverHost_PX4 macos/build/px4rec macos/build/DriverHost_PX4.ini macos/build/it930x-firmware.bin /usr/local/px4_drv/
+	$ sudo chown -R root:wheel /usr/local/px4_drv
+	$ sudo chmod 755 /usr/local/px4_drv /usr/local/px4_drv/DriverHost_PX4 /usr/local/px4_drv/px4rec
+	$ sudo chmod 644 /usr/local/px4_drv/DriverHost_PX4.ini /usr/local/px4_drv/it930x-firmware.bin
+
+**2. LaunchDaemon の作成**
+
+次のコマンドをそのまま貼り付けると、`/Library/LaunchDaemons/io.px4.DriverHost_PX4.plist` が作成されます。
+
+	$ sudo tee /Library/LaunchDaemons/io.px4.DriverHost_PX4.plist > /dev/null <<-'EOF'
+	<?xml version="1.0" encoding="UTF-8"?>
+	<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+	  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+	<plist version="1.0">
+	<dict>
+	  <key>Label</key>
+	  <string>io.px4.DriverHost_PX4</string>
+	  <key>ProgramArguments</key>
+	  <array>
+	    <string>/usr/local/px4_drv/DriverHost_PX4</string>
+	  </array>
+	  <key>WorkingDirectory</key>
+	  <string>/usr/local/px4_drv</string>
+	  <key>RunAtLoad</key>
+	  <true/>
+	  <key>KeepAlive</key>
+	  <dict>
+	    <key>SuccessfulExit</key>
+	    <false/>
+	  </dict>
+	  <key>ThrottleInterval</key>
+	  <integer>30</integer>
+	  <key>StandardOutPath</key>
+	  <string>/var/log/DriverHost_PX4.log</string>
+	  <key>StandardErrorPath</key>
+	  <string>/var/log/DriverHost_PX4.error.log</string>
+	</dict>
+	</plist>
+	EOF
+
+LaunchDaemon の plist は、所有者が root、パーミッションが `644` でなければ読み込まれません。
+
+	$ sudo chown root:wheel /Library/LaunchDaemons/io.px4.DriverHost_PX4.plist
+	$ sudo chmod 644 /Library/LaunchDaemons/io.px4.DriverHost_PX4.plist
+	$ plutil -lint /Library/LaunchDaemons/io.px4.DriverHost_PX4.plist
+
+**3. 登録と起動**
+
+手動で起動したデーモンが残っている場合は、先に停止します。
+
+	$ sudo pkill DriverHost_PX4
+	$ sudo launchctl bootstrap system /Library/LaunchDaemons/io.px4.DriverHost_PX4.plist
+
+**4. 確認**
+
+	$ sudo launchctl print system/io.px4.DriverHost_PX4 | grep -E 'state|pid|last exit'
+	$ ls -l /tmp/px4_ctrl_pipe.sock /tmp/px4_data_pipe.sock
+	$ cat /var/log/DriverHost_PX4.log /var/log/DriverHost_PX4.error.log
+	$ /usr/local/px4_drv/px4rec -d 10 T 27 test.ts
+
+`state = running` と表示され、ソケットが 2 つ存在し、`px4rec` で録画できれば完了です。以降は Mac を再起動しても自動的に起動します。
+
+デーモンは既定で常駐するため、起動オプションは不要です。`KeepAlive` の `SuccessfulExit` を `false` にしているので、launchd が再起動するのは異常終了したときだけです。`kill` による正常終了や、すでに別の `DriverHost_PX4` が動いていて二重起動を検出した場合 (どちらも終了コード 0) は再起動しません。`KeepAlive` を単に `true` にすると、手動起動したデーモンが残っている間、launchd が起動と終了を繰り返します。`ThrottleInterval` は、ファームウェアの配置漏れなどで起動に失敗し続けたときの再起動間隔 (秒) です。
+
+- plist を書き換えたときは、いったん `bootout` してから `bootstrap` し直します
+- デーモンだけを再起動するときは `sudo launchctl kickstart -k system/io.px4.DriverHost_PX4` を使います
+- ビルドし直したときは、「1. ファイルのインストール」のコマンドをもう一度実行してから再起動します
+- Mirakurun の `command:` には `/usr/local/px4_drv/px4rec` を指定します
+
+停止と登録解除:
+
+	$ sudo launchctl bootout system/io.px4.DriverHost_PX4
+
+録画中に停止すると TS が途中で終了します。録画処理を先に終了し、クライアントが切断されたことを確認してから停止します。
+#### tmux で起動
+
+ターミナルを閉じても動作させ、ログを確認したい場合は tmux を使用します。
+
+	$ tmux new-session -d -s px4-driver \
+	    'sudo ./macos/build/DriverHost_PX4 2>&1 | tee /tmp/DriverHost_PX4.log'
+	$ tmux attach -t px4-driver   # パスワードを求められていたら入力する
+
+デタッチは `Ctrl-b` の後に `d` です。セッションとデーモンの状態は次で確認できます。
+
+	$ tmux has-session -t px4-driver
+	$ ls -l /tmp/px4_ctrl_pipe.sock /tmp/px4_data_pipe.sock
+
+デーモンは既定で常駐するため、クライアントが切断されてもソケットは残ります。`--idle-timeout` を指定して起動した場合に限り、無接続が続くとデーモンが終了してソケットが消えます。
+
+#### 起動確認とトラブルシューティング
+
+ソケットだけでなく、プロセスとログを確認します。
+
+	$ pgrep -af DriverHost_PX4
+	$ ls -l /tmp/px4_ctrl_pipe.sock /tmp/px4_data_pipe.sock
+	$ tail -f /tmp/DriverHost_PX4.log
+
+ソケットが存在してもプロセスが動いていなければ、前回の異常終了で残ったソケットの可能性があります。プロセスが存在しないことを確認してから、対象ファイルだけを削除し、再起動します。
+
+	$ sudo rm -f /tmp/px4_ctrl_pipe.sock /tmp/px4_data_pipe.sock /tmp/px4_drv_host.lock
+	$ sudo ./macos/build/DriverHost_PX4
+
+起動時に `DriverHost_PX4.ini` または `it930x-firmware.bin` を読み込めない場合は、配置とファイル名を確認します。USB デバイスを認識できない場合は、USB 接続、対応機種、ログのエラーを確認します。
+
+ログに `libusb_claim_interface() failed: LIBUSB_ERROR_ACCESS` や「USB デバイスを取得する権限がありません」と表示される場合は、デーモンを root 権限で起動していません。いったん停止し、`sudo` を付けて起動し直してください。`could not open lock file` と表示される場合は、別のユーザー (root) で起動したデーモンがすでに動いています。
+
+### 6. 録画 (px4rec)
+
+`px4rec [options] T|S|C <channel> [output|-]` で TS データを録画できます。macOS 版の ISDB-C は実験的な対応です。選局と TSMF の TS の選択は WinUSB 版と共通の処理を使いますが、macOS での長時間受信は未検証です。
+
+> [!NOTE]
+> 接続されているチューナーが対応していない系統を指定した場合は `OPEN failed` で終了します。  
+> また、アンテナが未接続・無信号・受信条件不一致の場合は `TUNE failed` で終了します。
+
+	# 地上波 (ISDB-T) 27ch を 60 秒録画してファイルに保存
+	$ ./macos/build/px4rec -d 60 T 27 output.ts
+
+	# 衛星受信対応チューナーで、BS トランスポンダ 3 を stdout に出力 (パイプで他ツールへ渡す場合)
+	$ ./macos/build/px4rec S 3 - | ffplay -i -
+
+	# B-CAS カードで B25 デスクランブルを行いながら録画 (--b25 オプション)
+	$ ./macos/build/px4rec --b25 -d 60 T 13 output_decoded.ts
+
+	# CATV C13 を 60 秒録画 (ISDB-C、変調方式は復調器が判別)
+	$ ./macos/build/px4rec -d 60 C 13 cable.ts
+
+	# 中心周波数を直接指定し、補正値を加える
+	$ ./macos/build/px4rec --freq-khz 473000 --freq-offset -1 C 13 relay.ts
+
+	# TSMF で多重された C52 の2本目の TS (TS1) を録画
+	$ ./macos/build/px4rec --tsmf 1 C 52 stream.ts
+
+オプション一覧:
+
+| オプション | 説明 |
+| --- | --- |
+| `-i N` | 使用するチューナーのインデックス (0 始まり、デフォルト: -1 = 最初の空きチューナー) |
+| `-d N` | 録画時間を秒で指定 (省略すると SIGTERM/Ctrl+C まで継続) |
+| `--b25` | B-CAS カードを使って ARIB STD-B25 のデスクランブル処理を行う (macOS の PC/SC フレームワーク経由) |
+| `--freq-khz kHz` | C 専用。中心周波数を直接指定 (1〜4294967295 kHz)。指定時はチャンネル番号からの周波数計算が不要 |
+| `--freq-offset kHz` | C 専用。中心周波数への補正値 (符号付き32bit整数、既定 0)。補正後は1〜4294967295 kHzが必要 |
+| `--tsmf 0-14` | C 専用。TSMF のヘッダーに載っている有効な TS のうち、0 から数えて何番目を受信するか (既定 0) |
+| `--help` / `-h` | usage を表示 |
+| `T` / `S` / `C` | ISDB-T (地上波) / ISDB-S (衛星) / ISDB-C (CATV トラモジ) |
+| チャンネル | T: 物理チャンネル番号 13–62 / S: トランスポンダ番号 0–11 (BS), 12–23 (CS110) / C: CATV Cチャンネル番号 13–63 |
+| 出力先 | ファイルパス、または `-` (標準出力、省略時も標準出力) |
+
+ISDB-C の C13〜C22 は物理チャンネル3〜12、C23〜C63 は物理チャンネル22〜62に対応します。中心周波数は `93000 + 物理チャンネル × 6000` kHzで、物理チャンネル12だけ2000 kHzを加算します。UHF/VHF帯の再送信などでは `--freq-khz` で中心周波数を指定できます。直接指定時も Cチャンネル番号13〜63が必要です。
+
+C 専用オプションを T/S と併用した場合と、値が範囲外の場合は、選局前にエラーになります。TSMF を使わない搬送波では `--tsmf 0` (既定) だけが受信でき、TS1 以降の指定は選局に失敗します。TSMF のヘッダーで分割 TLV と示された TS は、TLV を取り出して出力するため、TS 用の復号処理である `--b25` とは併用できません。
+
+> [!NOTE]
+> `--b25` を使用する場合は、macOS に接続された PC/SC 対応 IC カードリーダーに B-CAS カードを挿入してください。  
+> macOS の PC/SC フレームワーク (`PCSC.framework`) を使用するため、追加のドライバやライブラリは不要です。
+
+### 7. mirakurun との連携
+
+`mirakurun` の設定ファイル (`tuners.yml`) に以下のように記述することで、mirakurun 経由で EPGStation や Chinachu から利用できます。
+
+`DriverHost_PX4` はあらかじめ launchd (または `sudo`) で起動しておき、`command:` には `px4rec` の絶対パスを指定してください。
+Mirakurun を一般ユーザーで動かしている場合、`px4rec` からの自動起動ではチューナーを取得できません。
+
+```yaml
+- name: PX4-T1
+  types:
+    - GR
+  command: /path/to/px4rec T <ch>
+
+- name: PX4-S1
+  types:
+    - BS
+    - CS
+  command: /path/to/px4rec -i 1 S <ch>
+```
+
+### 8. 確認
+
+デーモンが起動すると、UNIX ドメインソケットが作成されます。
+
+	$ ls /tmp/px4_ctrl_pipe.sock /tmp/px4_data_pipe.sock
+	/tmp/px4_ctrl_pipe.sock  /tmp/px4_data_pipe.sock
+
+ソケットファイルが存在していれば、デーモンは起動しています。チューナーを取得できているかは、ログに `libusb_claim_interface() failed` が出ていないことで確認します。
+
+## アンインストール (macOS)
+
+### 1. デーモンの停止
+
+launchd に登録している場合は、先に登録を解除します。
+
+	$ sudo launchctl bootout system/io.px4.DriverHost_PX4
+	$ sudo rm /Library/LaunchDaemons/io.px4.DriverHost_PX4.plist
+
+実行中の `DriverHost_PX4` プロセスを停止します。
+
+	$ sudo pkill DriverHost_PX4
+
+### 2. ファイルの削除
+
+	$ rm -rf macos/build
+	$ sudo rm -rf /usr/local/px4_drv   # launchd 用にコピーした場合
+
 ## アンインストール (Windows)
 
 ### 1. ドライバのアンインストール
@@ -608,6 +1050,12 @@ Mirakurun の場合は、環境変数 `DISABLE_PCSCD=1` を設定した上で、
 チューナーの機種に応じた BonDriver とその設定ファイルを配置し、TVTest や EDCB などの BonDriver に対応したソフトウェアで使用することで、TS データを受信することが可能です。
 
 BonDriver は専用のものが必要になるため、公式 (Jacky版) BonDriver や radi-sh 氏版 BonDriver_BDA と併用することはできません。
+
+### macOS
+
+`DriverHost_PX4` デーモンを起動した状態で、または `px4rec` に同梱された自動起動機能を通じて、UNIX ドメインソケット (`/tmp/px4_ctrl_pipe.sock`, `/tmp/px4_data_pipe.sock`) を経由し、Windows WinUSB 版と同一のコマンドプロトコルで通信することで、TS データを受信することが可能です。
+
+macOS のソケットはバイトストリームのため、コマンドは受信単位ではなくコマンド種別と要素数から求めた長さで区切られます。コマンド構造体は macOS 側の ABI を使用し、`wchar_t` を含む構造体のバイト配置は Windows と異なります。
 
 ### Linux
 
@@ -664,6 +1112,14 @@ System="ISDB-T,ISDB-S"
 - `J83B-H001` 〜 `J83B-H105`、`J83B-374950` (スカパー！プレミアムサービス光: 番号か中心周波数 (kHz) で指定)
 
 受信ソフトウェアを開発する方向けの ioctl 仕様は、[ISDB-C と J.83 Annex B の選局の仕様](docs/isdbc_tuning.md) に記載されています。
+
+### macOS
+
+`px4rec` の `C` でケーブルテレビ (ISDB-C) を選局できます。TSMF で多重された2本目以降の TS は `--tsmf` で指定します。指定方法は [録画 (px4rec)](#6-録画-px4rec) を参照してください。J.83B の選局は `px4rec` では未対応です。
+
+### MyGica T230C
+
+MyGica T230C は ISDB-C だけを受信できます (実験的)。チャンネル定義の形式は PX-MLT 系と同じで、Windows では `BonDriver_T230C` を使います。Si2168 の公開ドライバに ISDB-C (J.83 Annex C) の設定がないため、DVB-C 6 MHz の設定で受信しています。詳細は [T230C の説明](docs/t230c.md) を参照してください。
 
 > [!WARNING]  
 > 2026/10/29 現在、recisdb の ISDB-C / J.83B サポートは [kazuki0824/recisdb-rs#202](https://github.com/kazuki0824/recisdb-rs/pull/202) にて開発中です。  

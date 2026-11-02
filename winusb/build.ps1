@@ -80,6 +80,39 @@ foreach ($build_platform in $build_platforms) {
     if ($LASTEXITCODE -ne 0) {
         throw "ISDB-C ChSet test failed. platform: $build_platform"
     }
+    # T230C 用の ISDB-C ChSet も同じ列の規則で読めることを検証
+    & "build/$build_platform/Release-static/chset_isdbc_test.exe" "pkg/BonDriver_PX4/BonDriver_T230C-C.ChSet.txt" "pkg/BonDriver_PX4/BonDriver_PX4-J83B.ChSet.txt"
+    if ($LASTEXITCODE -ne 0) {
+        throw "T230C ISDB-C ChSet test failed. platform: $build_platform"
+    }
+
+    msbuild tests/siano_protocol_test.vcxproj /t:"Rebuild" /p:"Configuration=Release-static;Platform=$build_platform;PlatformToolset=v143"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Siano protocol test build failed. platform: $build_platform"
+    }
+    & "build/$build_platform/Release-static/siano_protocol_test.exe"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Siano protocol test failed. platform: $build_platform"
+    }
+
+    # Shared diagnostics, TS continuity, USB history, and fixed-point C/N conversion.
+    msbuild tests/diagnostics_test.vcxproj /t:"Rebuild" /p:"Configuration=Release-static;Platform=$build_platform;PlatformToolset=v143"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Diagnostics test build failed. platform: $build_platform"
+    }
+    & "build/$build_platform/Release-static/diagnostics_test.exe"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Diagnostics test failed. platform: $build_platform"
+    }
+
+    msbuild tests/signal_stat_test.vcxproj /t:"Rebuild" /p:"Configuration=Release-static;Platform=$build_platform;PlatformToolset=v143"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Signal statistics test build failed. platform: $build_platform"
+    }
+    & "build/$build_platform/Release-static/signal_stat_test.exe"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Signal statistics test failed. platform: $build_platform"
+    }
 }
 
 # dist/ フォルダにビルドされたファイルをコピー
@@ -100,6 +133,12 @@ New-Item -ItemType Directory dist/BonDriver_PX-M1UR_32bit
 New-Item -ItemType Directory dist/BonDriver_PX-M1UR_64bit
 New-Item -ItemType Directory dist/BonDriver_PX-S1UR_32bit
 New-Item -ItemType Directory dist/BonDriver_PX-S1UR_64bit
+New-Item -ItemType Directory dist/BonDriver_PX-S1UD_32bit
+New-Item -ItemType Directory dist/BonDriver_PX-S1UD_64bit
+New-Item -ItemType Directory dist/BonDriver_PX-Q1UD_32bit
+New-Item -ItemType Directory dist/BonDriver_PX-Q1UD_64bit
+New-Item -ItemType Directory dist/BonDriver_T230C_32bit
+New-Item -ItemType Directory dist/BonDriver_T230C_64bit
 
 # BonDriver_PX4_32bit のファイルをコピー
 Copy-Item build/x86/Release-static/BonDriver_PX4.dll dist/BonDriver_PX4_32bit/BonDriver_PX4-T.dll
@@ -231,9 +270,66 @@ Copy-Item build/x64/Release-static/DriverHost_PX4.exe dist/BonDriver_PX-S1UR_64b
 Copy-Item pkg/DriverHost_PX4/DriverHost_PX4.ini dist/BonDriver_PX-S1UR_64bit/DriverHost_PX4.ini
 Copy-Item pkg/DriverHost_PX4/it930x-firmware.bin dist/BonDriver_PX-S1UR_64bit/it930x-firmware.bin
 
+# BonDriver_PX-S1UD_32bit のファイルをコピー
+Copy-Item build/x86/Release-static/BonDriver_PX4.dll dist/BonDriver_PX-S1UD_32bit/BonDriver_PX-S1UD.dll
+Copy-Item pkg/BonDriver_PX4/BonDriver_PX-S1UD.ini dist/BonDriver_PX-S1UD_32bit/BonDriver_PX-S1UD.ini
+Copy-Item pkg/BonDriver_PX4/BonDriver_PX4-T.ChSet.txt dist/BonDriver_PX-S1UD_32bit/BonDriver_PX4-T.ChSet.txt
+Copy-Item build/x86/Release-static/DriverHost_PX4.exe dist/BonDriver_PX-S1UD_32bit/DriverHost_PX4.exe
+Copy-Item pkg/DriverHost_PX4/DriverHost_PX4.ini dist/BonDriver_PX-S1UD_32bit/DriverHost_PX4.ini
+Copy-Item pkg/DriverHost_PX4/it930x-firmware.bin dist/BonDriver_PX-S1UD_32bit/it930x-firmware.bin
+Copy-Item pkg/DriverHost_PX4/isdbt_rio.inp dist/BonDriver_PX-S1UD_32bit/isdbt_rio.inp
+Copy-Item pkg/DriverHost_PX4/LICENCE.siano dist/BonDriver_PX-S1UD_32bit/LICENCE.siano
+
+# BonDriver_PX-S1UD_64bit のファイルをコピー
+Copy-Item build/x64/Release-static/BonDriver_PX4.dll dist/BonDriver_PX-S1UD_64bit/BonDriver_PX-S1UD.dll
+Copy-Item pkg/BonDriver_PX4/BonDriver_PX-S1UD.ini dist/BonDriver_PX-S1UD_64bit/BonDriver_PX-S1UD.ini
+Copy-Item pkg/BonDriver_PX4/BonDriver_PX4-T.ChSet.txt dist/BonDriver_PX-S1UD_64bit/BonDriver_PX4-T.ChSet.txt
+Copy-Item build/x64/Release-static/DriverHost_PX4.exe dist/BonDriver_PX-S1UD_64bit/DriverHost_PX4.exe
+Copy-Item pkg/DriverHost_PX4/DriverHost_PX4.ini dist/BonDriver_PX-S1UD_64bit/DriverHost_PX4.ini
+Copy-Item pkg/DriverHost_PX4/it930x-firmware.bin dist/BonDriver_PX-S1UD_64bit/it930x-firmware.bin
+Copy-Item pkg/DriverHost_PX4/isdbt_rio.inp dist/BonDriver_PX-S1UD_64bit/isdbt_rio.inp
+Copy-Item pkg/DriverHost_PX4/LICENCE.siano dist/BonDriver_PX-S1UD_64bit/LICENCE.siano
+
+# BonDriver_PX-Q1UD_32bit のファイルをコピー
+Copy-Item build/x86/Release-static/BonDriver_PX4.dll dist/BonDriver_PX-Q1UD_32bit/BonDriver_PX-Q1UD.dll
+Copy-Item pkg/BonDriver_PX4/BonDriver_PX-Q1UD.ini dist/BonDriver_PX-Q1UD_32bit/BonDriver_PX-Q1UD.ini
+Copy-Item pkg/BonDriver_PX4/BonDriver_PX4-T.ChSet.txt dist/BonDriver_PX-Q1UD_32bit/BonDriver_PX4-T.ChSet.txt
+Copy-Item build/x86/Release-static/DriverHost_PX4.exe dist/BonDriver_PX-Q1UD_32bit/DriverHost_PX4.exe
+Copy-Item pkg/DriverHost_PX4/DriverHost_PX4.ini dist/BonDriver_PX-Q1UD_32bit/DriverHost_PX4.ini
+Copy-Item pkg/DriverHost_PX4/it930x-firmware.bin dist/BonDriver_PX-Q1UD_32bit/it930x-firmware.bin
+Copy-Item pkg/DriverHost_PX4/isdbt_rio.inp dist/BonDriver_PX-Q1UD_32bit/isdbt_rio.inp
+Copy-Item pkg/DriverHost_PX4/LICENCE.siano dist/BonDriver_PX-Q1UD_32bit/LICENCE.siano
+
+# BonDriver_PX-Q1UD_64bit のファイルをコピー
+Copy-Item build/x64/Release-static/BonDriver_PX4.dll dist/BonDriver_PX-Q1UD_64bit/BonDriver_PX-Q1UD.dll
+Copy-Item pkg/BonDriver_PX4/BonDriver_PX-Q1UD.ini dist/BonDriver_PX-Q1UD_64bit/BonDriver_PX-Q1UD.ini
+Copy-Item pkg/BonDriver_PX4/BonDriver_PX4-T.ChSet.txt dist/BonDriver_PX-Q1UD_64bit/BonDriver_PX4-T.ChSet.txt
+Copy-Item build/x64/Release-static/DriverHost_PX4.exe dist/BonDriver_PX-Q1UD_64bit/DriverHost_PX4.exe
+Copy-Item pkg/DriverHost_PX4/DriverHost_PX4.ini dist/BonDriver_PX-Q1UD_64bit/DriverHost_PX4.ini
+Copy-Item pkg/DriverHost_PX4/it930x-firmware.bin dist/BonDriver_PX-Q1UD_64bit/it930x-firmware.bin
+Copy-Item pkg/DriverHost_PX4/isdbt_rio.inp dist/BonDriver_PX-Q1UD_64bit/isdbt_rio.inp
+Copy-Item pkg/DriverHost_PX4/LICENCE.siano dist/BonDriver_PX-Q1UD_64bit/LICENCE.siano
+
+# BonDriver_T230C_32bit のファイルをコピー
+# Si2168 / Si2141 の firmware は再配布できないため、利用者が配置する
+Copy-Item build/x86/Release-static/BonDriver_PX4.dll dist/BonDriver_T230C_32bit/BonDriver_T230C.dll
+Copy-Item pkg/BonDriver_PX4/BonDriver_T230C.ini dist/BonDriver_T230C_32bit/BonDriver_T230C.ini
+Copy-Item pkg/BonDriver_PX4/BonDriver_T230C-C.ChSet.txt dist/BonDriver_T230C_32bit/BonDriver_T230C-C.ChSet.txt
+Copy-Item build/x86/Release-static/DriverHost_PX4.exe dist/BonDriver_T230C_32bit/DriverHost_PX4.exe
+Copy-Item pkg/DriverHost_PX4/DriverHost_PX4.ini dist/BonDriver_T230C_32bit/DriverHost_PX4.ini
+
+# BonDriver_T230C_64bit のファイルをコピー
+# Si2168 / Si2141 の firmware は再配布できないため、利用者が配置する
+Copy-Item build/x64/Release-static/BonDriver_PX4.dll dist/BonDriver_T230C_64bit/BonDriver_T230C.dll
+Copy-Item pkg/BonDriver_PX4/BonDriver_T230C.ini dist/BonDriver_T230C_64bit/BonDriver_T230C.ini
+Copy-Item pkg/BonDriver_PX4/BonDriver_T230C-C.ChSet.txt dist/BonDriver_T230C_64bit/BonDriver_T230C-C.ChSet.txt
+Copy-Item build/x64/Release-static/DriverHost_PX4.exe dist/BonDriver_T230C_64bit/DriverHost_PX4.exe
+Copy-Item pkg/DriverHost_PX4/DriverHost_PX4.ini dist/BonDriver_T230C_64bit/DriverHost_PX4.ini
+
 # 各 BonDriver と同じビット数の WinSCard.dll を配置
 # WinUSB 版の全対応機種で内蔵カードリーダーを利用できる
-Get-ChildItem dist/ -Directory -Filter 'BonDriver_*' | ForEach-Object {
+Get-ChildItem dist/ -Directory -Filter 'BonDriver_*' |
+    Where-Object { $_.Name -notmatch 'PX-(S1UD|Q1UD)_' } | ForEach-Object {
     $win_scard_platform = if ($_.Name.EndsWith('_32bit')) { 'x86' } else { 'x64' }
     Copy-Item "build/$win_scard_platform/Release-static/WinSCard.dll" $_.FullName
 }

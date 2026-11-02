@@ -1,0 +1,36 @@
+; MyGica T230C (0572:C68A)
+[Version]
+Signature="$Windows NT$"
+Class=Media
+ClassGuid={4d36e96c-e325-11ce-bfc1-08002be10318}
+Provider=%AuthorName%
+DriverVer=10/31/2026,26.10.31.00
+CatalogFile=px4_drv_winusb.cat
+
+[Manufacturer]
+%AuthorName%=T230C_WinUSB,ntx86,ntamd64,ntarm64
+
+[T230C_WinUSB.ntx86]
+%T230C_WinUSB.DeviceDesc%=T230C_WinUSB.DeviceInstall,USB\VID_0572&PID_C68A
+[T230C_WinUSB.ntamd64]
+%T230C_WinUSB.DeviceDesc%=T230C_WinUSB.DeviceInstall,USB\VID_0572&PID_C68A
+[T230C_WinUSB.ntarm64]
+%T230C_WinUSB.DeviceDesc%=T230C_WinUSB.DeviceInstall,USB\VID_0572&PID_C68A
+
+[T230C_WinUSB.DeviceInstall]
+Include=winusb.inf
+Needs=WINUSB.NT
+AddProperty=T230C_WinUSB.DeviceSetup.AddProperty
+[T230C_WinUSB.DeviceInstall.Services]
+Include=winusb.inf
+Needs=WINUSB.NT.Services
+[T230C_WinUSB.DeviceInstall.HW]
+AddReg=T230C_WinUSB.DeviceSetup.AddReg
+[T230C_WinUSB.DeviceSetup.AddReg]
+HKR,,DeviceInterfaceGUIDs,0x00010000,"{1c51af64-942a-47f8-94ba-6534a2ba3c2f}"
+[T230C_WinUSB.DeviceSetup.AddProperty]
+{afd97640-86a3-4210-b67c-289c41aabe55},3,0x00000011,,0
+
+[Strings]
+AuthorName="px4_drv contributors"
+T230C_WinUSB.DeviceDesc="MyGica T230C ISDB-C Receiver (WinUSB)"

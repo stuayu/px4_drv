@@ -34,7 +34,7 @@ git log --oneline 185aa1329ee6b04d9456917db65a767d0f690fcf..HEAD
 ## 現在の到達点
 
 Windows 版の内蔵カードリーダーは、Linux 版の設計元として固定できる状態です。  
-Linux 実装に必要なハードウェア操作も [`driver/it930x.c`](../driver/it930x.c) と [`driver/it930x.h`](../driver/it930x.h) に共通処理として入っています。  
+Linux 実装に必要なハードウェア操作も [`driver/common/bridge/it930x.c`](../driver/it930x.c) と [`driver/common/bridge/it930x.h`](../driver/it930x.h) に共通処理として入っています。  
 
 Linux 側に残っている主要作業は、次の2系統です。  
 
@@ -60,8 +60,8 @@ Windows 側で Linux 実装へ直接関係する直近のコミットは次の�
 Windows 版では、カードの物理操作と T=1 プロトコル処理を分離しています。  
 Linux 版でも、この境界を維持してください。  
 
-[`winusb/src/DriverHost_PX4/card_device.hpp`](../winusb/src/DriverHost_PX4/card_device.hpp) は、カード検出、リセット、送受信、ボーレート変更を機種実装へ要求するインターフェースです。  
-[`winusb/src/DriverHost_PX4/smart_card.cpp`](../winusb/src/DriverHost_PX4/smart_card.cpp) は、ATR 解析、T=1 の状態、再送、タイムアウト、APDU 分割を担当します。  
+[`host/core/card_device.hpp`](../winusb/src/DriverHost_PX4/card_device.hpp) は、カード検出、リセット、送受信、ボーレート変更を機種実装へ要求するインターフェースです。  
+[`host/core/smart_card.cpp`](../winusb/src/DriverHost_PX4/smart_card.cpp) は、ATR 解析、T=1 の状態、再送、タイムアウト、APDU 分割を担当します。  
 
 T=1 の状態機械をカーネルへ置く構成は、次の理由から見送りました。  
 カーネル側はカード用デバイスの寿命、排他、共有電源、IT930x UART 操作を担当し、ユーザー空間の PC/SC IFD ハンドラーが ATR と T=1 を担当する構成を推奨します。  
@@ -98,7 +98,7 @@ B-CAS では、RESYNCH の後に IFS 要求を送ります。
 
 ### APDU と T=1
 
-T=1 の実装元は [`winusb/src/DriverHost_PX4/smart_card.cpp`](../winusb/src/DriverHost_PX4/smart_card.cpp) です。  
+T=1 の実装元は [`host/core/smart_card.cpp`](../winusb/src/DriverHost_PX4/smart_card.cpp) です。  
 Linux 向けに書き直す際も、次の挙動を契約として維持します。  
 
 - 送信シーケンスと受信シーケンスを、セッションの初期化時にリセット
@@ -132,7 +132,7 @@ ATR が形式不正だった場合に限り、カードリセットを1回だけ
 
 ## 共通 IT930x 実装
 
-Linux と Windows で共有するカード用ハードウェア操作は、すでに [`driver/it930x.c`](../driver/it930x.c) にあります。  
+Linux と Windows で共有するカード用ハードウェア操作は、すでに [`driver/common/bridge/it930x.c`](../driver/it930x.c) にあります。  
 Linux 側のデバイス実装から、この API をそのまま呼び出してください。  
 
 現在の API は次の処理を提供します。  
@@ -156,7 +156,7 @@ Linux 側のデバイス実装から、この API をそのまま呼び出して
 
 ### PX4 系
 
-Windows 側の実装は [`winusb/src/DriverHost_PX4/px4_device.cpp`](../winusb/src/DriverHost_PX4/px4_device.cpp) を参照してください。  
+Windows 側の実装は [`host/devices/px4_device.cpp`](../winusb/src/DriverHost_PX4/px4_device.cpp) を参照してください。  
 カードを開くと、チューナーと共有する基板電源の利用数を増やしてから `it930x_bcas_init()` を実行します。  
 初期化に失敗した場合は、増やした電源利用数を必ず戻します。  
 
@@ -171,7 +171,7 @@ VID `0x0511` の PID `0x084a`、`0x024a`、`0x074a` では、シリアル番号�
 
 ### PXMLT 系
 
-Windows 側の実装は [`winusb/src/DriverHost_PX4/pxmlt_device.cpp`](../winusb/src/DriverHost_PX4/pxmlt_device.cpp) を参照してください。  
+Windows 側の実装は [`host/devices/pxmlt_device.cpp`](../winusb/src/DriverHost_PX4/pxmlt_device.cpp) を参照してください。  
 PX-MLT8PE は、5チューナー側と3チューナー側が別の USB デバイスとして見えます。  
 コード上の `PXMLT8PE3` は3チューナー側を示し、カードリーダーを持つのは5チューナー側だけです。  
 
@@ -180,17 +180,17 @@ PX-MLT8PE は、5チューナー側と3チューナー側が別の USB デバイ
 
 ### ISDB2056 系
 
-Windows 側の実装は [`winusb/src/DriverHost_PX4/isdb2056_device.cpp`](../winusb/src/DriverHost_PX4/isdb2056_device.cpp) を参照してください。  
+Windows 側の実装は [`host/devices/isdb2056_device.cpp`](../winusb/src/DriverHost_PX4/isdb2056_device.cpp) を参照してください。  
 ISDB2056 系は、同じ IT930x 上で TS と B-CAS UART の制御転送を実行します。  
 カード単体の APDU 試験に加え、受信中の APDU を必須試験にします。  
 
 電源を有効にした後のカード初期化に失敗した場合は、カード側が取得した電源利用数を戻します。  
-なお、Linux 側の [`driver/isdb2056_device.c`](../driver/isdb2056_device.c) にカード処理はまだ存在せず、コミット `2559c7b34b0739802d5f716152600448aa11a4f9` が修正したのはチューナー open 失敗時の電源解放漏れです。  
+なお、Linux 側の [`driver/linux/isdb2056_device.c`](../driver/isdb2056_device.c) にカード処理はまだ存在せず、コミット `2559c7b34b0739802d5f716152600448aa11a4f9` が修正したのはチューナー open 失敗時の電源解放漏れです。  
 カード実装時には、この修正が塞いだものと同じ形の失敗経路がカード側の電源利用数にも生まれるため、同じ考え方で解放漏れを防いでください。  
 
 ### Linux 側の機種判定
 
-Linux 側で対応機種を追加する前に、[`driver/px4_usb.c`](../driver/px4_usb.c) の `DeviceDefinition` と各機種のプローブ処理を確認してください。  
+Linux 側で対応機種を追加する前に、[`driver/linux/px4_usb.c`](../driver/px4_usb.c) の `DeviceDefinition` と各機種のプローブ処理を確認してください。  
 Windows 側に存在する機種名を、そのまま Linux 側の別デバイス実装として追加しないでください。  
 VID と PID だけからカードスロットの有無を推測せず、現在の機種定義、インターフェース番号、シリアル番号、既存の電源構成を組み合わせて判定します。  
 
@@ -225,7 +225,7 @@ VID と PID だけからカードスロットの有無を推測せず、現在�
 ### ユーザー空間
 
 ユーザー空間には、pcsc-lite が読み込む IFD ハンドラーと、独立して試験できる T=1 プロトコル実装を追加します。  
-プロトコル実装は [`winusb/src/DriverHost_PX4/smart_card.cpp`](../winusb/src/DriverHost_PX4/smart_card.cpp) の状態遷移を移植し、Linux のファイル I/O を薄いアダプターとして接続します。  
+プロトコル実装は [`host/core/smart_card.cpp`](../winusb/src/DriverHost_PX4/smart_card.cpp) の状態遷移を移植し、Linux のファイル I/O を薄いアダプターとして接続します。  
 
 IFD ハンドラーは次の処理を担当します。  
 
@@ -534,7 +534,7 @@ Linux 側の最初の作業では、次の順で事実を固定してくださ�
 1. HEAD と上記コミット群の存在を確認
 2. 現在の `develop` を対象カーネルでビルド
 3. カード実装前の TS 受信結果とカーネルログを保存
-4. `driver/it930x.c` のカード API と、各機種の電源 API の呼出条件を行番号単位で確認
+4. `driver/common/bridge/it930x.c` のカード API と、各機種の電源 API の呼出条件を行番号単位で確認
 5. makeding 氏、onpat 氏、yyya-nico 氏の最新差分を再取得し、この文書作成後の変更がないか確認
 6. 公開するカードデバイス ABI と、USB 切断時の寿命を先に設計
 7. Windows の状態試験を移植し、模擬 I/O で失敗条件まで固定

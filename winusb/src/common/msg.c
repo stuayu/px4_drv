@@ -9,10 +9,22 @@
 
 static enum msg_mode mode = MSG_MODE_NONE;
 static HANDLE file_handle = INVALID_HANDLE_VALUE;
+/* 起動からの経過時間の基準。最初の msg_set_mode() で決め、以後は変えない。 */
+static ULONGLONG epoch_ms = 0;
+static int epoch_set = 0;
 
 void msg_set_mode(enum msg_mode new_mode)
 {
+	if (!epoch_set) {
+		epoch_ms = GetTickCount64();
+		epoch_set = 1;
+	}
 	mode = new_mode;
+}
+
+uint64_t msg_now_ms(void)
+{
+	return (uint64_t)(GetTickCount64() - epoch_ms);
 }
 
 bool msg_open_file(const wchar_t *path)

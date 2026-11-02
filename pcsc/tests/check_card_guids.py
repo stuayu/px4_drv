@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 root = Path(__file__).resolve().parents[2]
-source = (root / 'driver/px4_card.c').read_text(encoding='utf-8')
+source = (root / 'driver/linux/px4_card.c').read_text(encoding='utf-8')
 table = source.split('px4_card_guids[] = {', 1)[1].split('};', 1)[0]
 entries = re.findall(r'\{\s*0x([0-9a-f]{4}),\s*"(\{[0-9a-f-]+\})"\s*\}', table)
 actual = {int(pid, 16): guid for pid, guid in entries}
@@ -15,6 +15,9 @@ expected = {}
 for inf in sorted((root / 'winusb/pkg/inf').glob('*.inf')):
     text = inf.read_text(encoding='utf-8-sig')
     pids = set(re.findall(r'USB\\VID_0511&PID_([0-9a-f]{4})', text, re.IGNORECASE))
+    # MyGica T230C や Siano RIO など VID 0511 以外の INF は、内蔵カードリーダーを持たず px4_card の対象外
+    if not pids and not re.search(r'USB\\VID_0511&', text, re.IGNORECASE):
+        continue
     guids = set(re.findall(r'DeviceInterfaceGUIDs,[^"\n]*"(\{[0-9a-f-]+\})"', text, re.IGNORECASE))
     assert pids and len(guids) == 1, f'{inf.name}: expected PIDs and one interface GUID'
     guid = guids.pop().lower()

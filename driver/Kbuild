@@ -13,7 +13,7 @@ ISDBT2071_USB_MAX_DEVICE := 0
 PSB_DEBUG := 0
 ITEDTV_BUS_USE_WORKQUEUE := 0
 
-ccflags-y := -I$(M)/../include
+ccflags-y := -I$(M)/../include -I$(src) -I$(src)/linux -I$(src)/common/include -I$(src)/common/bridge -I$(src)/common/demod -I$(src)/common/tuner -I$(src)/common/ts
 
 ifneq ($(DEBUG),0)
 ccflags-y += -DDEBUG -g
@@ -43,6 +43,11 @@ endif
 ifneq ($(ISDBT2071_USB_MAX_DEVICE),0)
 ccflags-y += -DISDBT2071_USB_MAX_DEVICE=$(ISDBT2071_USB_MAX_DEVICE)
 endif
+# RHEL 9 などはカーネル版数を据え置いたまま、6.4 の class_create() の引数変更を取り込んでいる。
+# 版数では判定できないため、ビルド対象カーネルのヘッダーの宣言で判定する。
+ifneq ($(shell grep -s 'class_create(const char \*name)' $(srctree)/include/linux/device/class.h),)
+ccflags-y += -DPTX_CLASS_CREATE_WITHOUT_OWNER
+endif
 ifneq ($(PSB_DEBUG),0)
 ccflags-y += -DPSB_DEBUG
 endif
@@ -51,4 +56,4 @@ ccflags-y += -DITEDTV_BUS_USE_WORKQUEUE
 endif
 
 obj-m := px4_drv.o
-px4_drv-y := driver_module.o ptx_chrdev.o px4_usb.o px4_usb_params.o px4_device.o px4_device_params.o px4_mldev.o pxmlt_device.o isdb2056_device.o it930x.o itedtv_bus.o tc90522.o r850.o rt710.o cxd2856er.o cxd2858er.o ringbuffer.o isdbt2071_device.o px4_card.o tsmf.o
+px4_drv-y := linux/driver_module.o linux/ptx_chrdev.o linux/px4_usb.o linux/px4_usb_params.o linux/px4_device.o linux/px4_device_params.o linux/px4_mldev.o linux/pxmlt_device.o linux/isdb2056_device.o common/bridge/it930x.o linux/itedtv_bus.o common/demod/tc90522.o common/tuner/r850.o common/tuner/rt710.o common/demod/cxd2856er.o common/demod/cxd2858er.o linux/ringbuffer.o linux/isdbt2071_device.o linux/px4_card.o common/ts/tsmf.o common/bridge/siano_wire_core.o common/bridge/siano_protocol_core.o linux/siano_device.o common/bridge/t230c_usb.o common/demod/si2168.o common/tuner/si2141.o common/ts/t230c_ts_sync.o linux/t230c_device.o

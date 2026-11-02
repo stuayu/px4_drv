@@ -107,37 +107,37 @@
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)build\$(PlatformTarget)\$(Configuration)\</OutDir>
     <IntDir>build\$(PlatformTarget)\$(Configuration)\</IntDir>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)src\common;$(ProjectDir);$(ProjectDir)..\..\..\driver;</IncludePath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)src\common;$(SolutionDir)..\host\common;$(ProjectDir);$(ProjectDir)..\..\..\driver\common\include;$(ProjectDir)..\..\..\driver\common\bridge;$(ProjectDir)..\..\..\driver\common\demod;$(ProjectDir)..\..\..\driver\common\tuner;$(ProjectDir)..\..\..\driver\common\ts;$(ProjectDir)..\..\..\driver\common\signal;$(ProjectDir)..\..\..\host\core;$(ProjectDir)..\..\..\host\devices;</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)build\$(PlatformTarget)\$(Configuration)\</OutDir>
     <IntDir>build\$(PlatformTarget)\$(Configuration)\</IntDir>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)src\common;$(ProjectDir);$(ProjectDir)..\..\..\driver;</IncludePath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)src\common;$(SolutionDir)..\host\common;$(ProjectDir);$(ProjectDir)..\..\..\driver\common\include;$(ProjectDir)..\..\..\driver\common\bridge;$(ProjectDir)..\..\..\driver\common\demod;$(ProjectDir)..\..\..\driver\common\tuner;$(ProjectDir)..\..\..\driver\common\ts;$(ProjectDir)..\..\..\driver\common\signal;$(ProjectDir)..\..\..\host\core;$(ProjectDir)..\..\..\host\devices;</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)build\$(PlatformTarget)\$(Configuration)\</OutDir>
     <IntDir>build\$(PlatformTarget)\$(Configuration)\</IntDir>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)src\common;$(ProjectDir);$(ProjectDir)..\..\..\driver;</IncludePath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)src\common;$(SolutionDir)..\host\common;$(ProjectDir);$(ProjectDir)..\..\..\driver\common\include;$(ProjectDir)..\..\..\driver\common\bridge;$(ProjectDir)..\..\..\driver\common\demod;$(ProjectDir)..\..\..\driver\common\tuner;$(ProjectDir)..\..\..\driver\common\ts;$(ProjectDir)..\..\..\driver\common\signal;$(ProjectDir)..\..\..\host\core;$(ProjectDir)..\..\..\host\devices;</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-static|Win32'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)build\$(PlatformTarget)\$(Configuration)\</OutDir>
     <IntDir>build\$(PlatformTarget)\$(Configuration)\</IntDir>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)src\common;$(ProjectDir);$(ProjectDir)..\..\..\driver;</IncludePath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)src\common;$(SolutionDir)..\host\common;$(ProjectDir);$(ProjectDir)..\..\..\driver\common\include;$(ProjectDir)..\..\..\driver\common\bridge;$(ProjectDir)..\..\..\driver\common\demod;$(ProjectDir)..\..\..\driver\common\tuner;$(ProjectDir)..\..\..\driver\common\ts;$(ProjectDir)..\..\..\driver\common\signal;$(ProjectDir)..\..\..\host\core;$(ProjectDir)..\..\..\host\devices;</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)build\$(PlatformTarget)\$(Configuration)\</OutDir>
     <IntDir>build\$(PlatformTarget)\$(Configuration)\</IntDir>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)src\common;$(ProjectDir);$(ProjectDir)..\..\..\driver;</IncludePath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)src\common;$(SolutionDir)..\host\common;$(ProjectDir);$(ProjectDir)..\..\..\driver\common\include;$(ProjectDir)..\..\..\driver\common\bridge;$(ProjectDir)..\..\..\driver\common\demod;$(ProjectDir)..\..\..\driver\common\tuner;$(ProjectDir)..\..\..\driver\common\ts;$(ProjectDir)..\..\..\driver\common\signal;$(ProjectDir)..\..\..\host\core;$(ProjectDir)..\..\..\host\devices;</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-static|x64'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)build\$(PlatformTarget)\$(Configuration)\</OutDir>
     <IntDir>build\$(PlatformTarget)\$(Configuration)\</IntDir>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)src\common;$(ProjectDir);$(ProjectDir)..\..\..\driver;</IncludePath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)src\common;$(SolutionDir)..\host\common;$(ProjectDir);$(ProjectDir)..\..\..\driver\common\include;$(ProjectDir)..\..\..\driver\common\bridge;$(ProjectDir)..\..\..\driver\common\demod;$(ProjectDir)..\..\..\driver\common\tuner;$(ProjectDir)..\..\..\driver\common\ts;$(ProjectDir)..\..\..\driver\common\signal;$(ProjectDir)..\..\..\host\core;$(ProjectDir)..\..\..\host\devices;</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -248,81 +248,109 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\..\driver\cxd2856er.c" />
-    <ClCompile Include="..\..\..\driver\cxd2858er.c" />
-    <ClCompile Include="..\..\..\driver\it930x.c" />
-    <ClCompile Include="..\..\..\driver\r850.c" />
-    <ClCompile Include="..\..\..\driver\rt710.c" />
-    <ClCompile Include="..\..\..\driver\tc90522.c" />
-    <ClCompile Include="..\..\..\driver\tsmf.c" />
+    <ClCompile Include="..\..\..\driver\common\demod\cxd2856er.c" />
+    <ClCompile Include="..\..\..\driver\common\signal\signal_stat.c" />
+    <ClCompile Include="..\..\..\driver\common\bridge\siano_wire_core.c" />
+    <ClCompile Include="..\..\..\driver\common\demod\cxd2858er.c" />
+    <ClCompile Include="..\..\..\driver\common\bridge\it930x.c" />
+    <ClCompile Include="..\..\..\driver\common\tuner\r850.c" />
+    <ClCompile Include="..\..\..\driver\common\tuner\rt710.c" />
+    <ClCompile Include="..\..\..\driver\common\bridge\t230c_usb.c" />
+    <ClCompile Include="..\..\..\driver\common\demod\si2168.c" />
+    <ClCompile Include="..\..\..\driver\common\tuner\si2141.c" />
+    <ClCompile Include="..\..\..\driver\common\ts\t230c_ts_sync.c" />
+    <ClCompile Include="..\..\..\driver\common\demod\tc90522.c" />
+    <ClCompile Include="..\..\..\driver\common\ts\tsmf.c" />
     <ClCompile Include="..\common\config.cpp" />
     <ClCompile Include="..\common\msg.c" />
+    <ClCompile Include="..\..\..\host\common\msg_log.c" />
     <ClCompile Include="..\common\pipe.cpp" />
     <ClCompile Include="..\common\security_attributes.cpp" />
     <ClCompile Include="..\common\util.cpp" />
-    <ClCompile Include="ctrl_server.cpp" />
-	<ClCompile Include="card_server.cpp" />
+    <ClCompile Include="..\..\..\host\core\ctrl_server.cpp" />
+	<ClCompile Include="..\..\..\host\core\card_server.cpp" />
     <ClCompile Include="device_base.cpp" />
-    <ClCompile Include="device_definition_set.cpp" />
+    <ClCompile Include="..\..\..\host\core\device_definition_set.cpp" />
+    <ClCompile Include="..\..\..\host\core\device_factory.cpp" />
     <ClCompile Include="device_manager.cpp" />
     <ClCompile Include="device_notifier.cpp" />
     <ClCompile Include="driver_host.cpp" />
-    <ClCompile Include="isdb2056_device.cpp" />
-    <ClCompile Include="isdbt2071_device.cpp" />
+    <ClCompile Include="..\..\..\host\devices\isdb2056_device.cpp" />
+    <ClCompile Include="..\..\..\host\devices\isdbt2071_device.cpp" />
+    <ClCompile Include="..\..\..\host\devices\t230c_device.cpp" />
+    <ClCompile Include="..\..\..\host\devices\t230c_protocol.cpp" />
+    <ClCompile Include="..\..\..\host\devices\t230c_silicon.cpp" />
+    <ClCompile Include="..\..\..\host\devices\siano_device.cpp" />
+    <ClCompile Include="..\..\..\host\devices\siano_protocol.cpp" />
+    <ClCompile Include="..\..\..\host\devices\siano_wire.cpp" />
     <ClCompile Include="itedtv_bus_winusb.c" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="misc_win.c" />
     <ClCompile Include="pipe_server.cpp" />
-    <ClCompile Include="px4_device.cpp" />
-    <ClCompile Include="pxmlt_device.cpp" />
-    <ClCompile Include="receiver_base.cpp" />
-    <ClCompile Include="receiver_manager.cpp" />
-    <ClCompile Include="ringbuffer.cpp" />
-    <ClCompile Include="server_base.cpp" />
-    <ClCompile Include="stream_server.cpp" />
-	<ClCompile Include="smart_card.cpp" />
+    <ClCompile Include="..\..\..\host\devices\px4_device.cpp" />
+    <ClCompile Include="..\..\..\host\devices\pxmlt_device.cpp" />
+    <ClCompile Include="..\..\..\host\core\receiver_base.cpp" />
+    <ClCompile Include="..\..\..\host\core\ts_stats.cpp" />
+    <ClCompile Include="..\..\..\host\core\usb_history.cpp" />
+    <ClCompile Include="..\..\..\host\core\receiver_manager.cpp" />
+    <ClCompile Include="..\..\..\host\core\ringbuffer.cpp" />
+    <ClCompile Include="..\..\..\host\core\server_base.cpp" />
+    <ClCompile Include="..\..\..\host\core\stream_server.cpp" />
+	<ClCompile Include="..\..\..\host\core\smart_card.cpp" />
     <ClCompile Include="notify_icon.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\..\driver\cxd2856er.h" />
-    <ClInclude Include="..\..\..\driver\cxd2858er.h" />
-    <ClInclude Include="..\..\..\driver\i2c_comm.h" />
-    <ClInclude Include="..\..\..\driver\it930x.h" />
-    <ClInclude Include="..\..\..\driver\itedtv_bus.h" />
-    <ClInclude Include="..\..\..\driver\r850.h" />
-    <ClInclude Include="..\..\..\driver\rt710.h" />
-    <ClInclude Include="..\..\..\driver\tc90522.h" />
-    <ClInclude Include="..\..\..\driver\tsmf.h" />
-    <ClInclude Include="..\common\command.hpp" />
-	<ClInclude Include="..\common\card_command.hpp" />
-    <ClInclude Include="..\common\config.hpp" />
-    <ClInclude Include="..\common\msg.h" />
-    <ClInclude Include="..\common\pipe.hpp" />
+    <ClInclude Include="..\..\..\driver\common\demod\cxd2856er.h" />
+    <ClInclude Include="..\..\..\driver\common\demod\cxd2858er.h" />
+    <ClInclude Include="..\..\..\driver\common\include\i2c_comm.h" />
+    <ClInclude Include="..\..\..\driver\common\bridge\it930x.h" />
+    <ClInclude Include="..\..\..\driver\common\include\itedtv_bus.h" />
+    <ClInclude Include="..\..\..\driver\common\tuner\r850.h" />
+    <ClInclude Include="..\..\..\driver\common\bridge\siano_wire_core.h" />
+    <ClInclude Include="..\..\..\driver\common\tuner\rt710.h" />
+    <ClInclude Include="..\..\..\driver\common\demod\tc90522.h" />
+    <ClInclude Include="..\..\..\driver\common\ts\tsmf.h" />
+    <ClInclude Include="..\..\..\host\common\command.hpp" />
+	<ClInclude Include="..\..\..\host\common\card_command.hpp" />
+    <ClInclude Include="..\..\..\host\common\config.hpp" />
+    <ClInclude Include="..\..\..\host\common\msg.h" />
+    <ClInclude Include="..\..\..\host\common\pipe.hpp" />
     <ClInclude Include="..\common\security_attributes.hpp" />
-    <ClInclude Include="..\common\type.hpp" />
-    <ClInclude Include="..\common\util.hpp" />
-    <ClInclude Include="ctrl_server.hpp" />
-	<ClInclude Include="card_server.hpp" />
-	<ClInclude Include="card_device.hpp" />
-    <ClInclude Include="device_base.hpp" />
-    <ClInclude Include="device_definition_set.hpp" />
-    <ClInclude Include="device_manager.hpp" />
+    <ClInclude Include="..\..\..\host\common\type.hpp" />
+    <ClInclude Include="..\..\..\host\common\util.hpp" />
+    <ClInclude Include="..\..\..\host\core\ctrl_server.hpp" />
+	<ClInclude Include="..\..\..\host\core\card_server.hpp" />
+	<ClInclude Include="..\..\..\host\core\card_device.hpp" />
+    <ClInclude Include="..\..\..\host\core\device_base.hpp" />
+    <ClInclude Include="..\..\..\host\core\device_definition_set.hpp" />
+    <ClInclude Include="..\..\..\host\core\device_factory.hpp" />
+    <ClInclude Include="..\..\..\host\core\device_manager.hpp" />
     <ClInclude Include="device_notifier.hpp" />
     <ClInclude Include="driver_host.hpp" />
-    <ClInclude Include="isdb2056_device.hpp" />
-    <ClInclude Include="isdbt2071_device.hpp" />
+    <ClInclude Include="..\..\..\host\devices\isdb2056_device.hpp" />
+    <ClInclude Include="..\..\..\host\devices\isdbt2071_device.hpp" />
+    <ClInclude Include="..\..\..\host\devices\t230c_device.hpp" />
+    <ClInclude Include="..\..\..\host\devices\t230c_protocol.hpp" />
+    <ClInclude Include="..\..\..\host\devices\t230c_silicon.hpp" />
+    <ClInclude Include="..\..\..\driver\common\bridge\t230c_usb.h" />
+    <ClInclude Include="..\..\..\driver\common\demod\si2168.h" />
+    <ClInclude Include="..\..\..\driver\common\tuner\si2141.h" />
+    <ClInclude Include="..\..\..\driver\common\ts\t230c_ts_sync.h" />
+    <ClInclude Include="..\..\..\host\devices\siano_device.hpp" />
+    <ClInclude Include="..\..\..\host\devices\siano_protocol.hpp" />
+    <ClInclude Include="..\..\..\host\devices\siano_wire.hpp" />
     <ClInclude Include="misc_win.h" />
     <ClInclude Include="notify_icon.hpp" />
-    <ClInclude Include="pipe_server.hpp" />
-    <ClInclude Include="px4_device.hpp" />
-    <ClInclude Include="pxmlt_device.hpp" />
-    <ClInclude Include="receiver_base.hpp" />
-    <ClInclude Include="receiver_manager.hpp" />
+    <ClInclude Include="..\..\..\host\core\pipe_server.hpp" />
+    <ClInclude Include="..\..\..\host\devices\px4_device.hpp" />
+    <ClInclude Include="..\..\..\host\devices\pxmlt_device.hpp" />
+    <ClInclude Include="..\..\..\host\core\receiver_base.hpp" />
+    <ClInclude Include="..\..\..\host\core\receiver_manager.hpp" />
     <ClInclude Include="resource.h" />
-    <ClInclude Include="ringbuffer.hpp" />
-    <ClInclude Include="server_base.hpp" />
-    <ClInclude Include="stream_server.hpp" />
-	<ClInclude Include="smart_card.hpp" />
+    <ClInclude Include="..\..\..\host\core\ringbuffer.hpp" />
+    <ClInclude Include="..\..\..\host\core\server_base.hpp" />
+    <ClInclude Include="..\..\..\host\core\stream_server.hpp" />
+	<ClInclude Include="..\..\..\host\core\smart_card.hpp" />
     <ClInclude Include="winusb_compat.h" />
   </ItemGroup>
   <ItemGroup>

@@ -18,25 +18,40 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\..\driver\cxd2856er.c">
+    <ClCompile Include="..\..\..\driver\common\demod\cxd2856er.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\driver\cxd2858er.c">
+    <ClCompile Include="..\..\..\driver\common\bridge\siano_wire_core.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\driver\it930x.c">
+    <ClCompile Include="..\..\..\driver\common\demod\cxd2858er.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\driver\r850.c">
+    <ClCompile Include="..\..\..\driver\common\bridge\it930x.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\driver\rt710.c">
+    <ClCompile Include="..\..\..\driver\common\tuner\r850.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\driver\tc90522.c">
+    <ClCompile Include="..\..\..\driver\common\tuner\rt710.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\driver\tsmf.c">
+    <ClCompile Include="..\..\..\driver\common\bridge\t230c_usb.c">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\driver\common\demod\si2168.c">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\driver\common\tuner\si2141.c">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\driver\common\ts\t230c_ts_sync.c">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\driver\common\demod\tc90522.c">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\driver\common\ts\tsmf.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
     <ClCompile Include="..\common\config.cpp">
@@ -54,13 +69,16 @@
     <ClCompile Include="..\common\util.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="ctrl_server.cpp">
+    <ClCompile Include="..\..\..\host\core\ctrl_server.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
     <ClCompile Include="device_base.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="device_definition_set.cpp">
+    <ClCompile Include="..\..\..\host\core\device_definition_set.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\host\core\device_factory.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
     <ClCompile Include="device_manager.cpp">
@@ -84,96 +102,126 @@
     <ClCompile Include="pipe_server.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="px4_device.cpp">
+    <ClCompile Include="..\..\..\host\devices\px4_device.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="pxmlt_device.cpp">
+    <ClCompile Include="..\..\..\host\devices\pxmlt_device.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="receiver_base.cpp">
+    <ClCompile Include="..\..\..\host\core\receiver_base.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="receiver_manager.cpp">
+    <ClCompile Include="..\..\..\host\core\receiver_manager.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="ringbuffer.cpp">
+    <ClCompile Include="..\..\..\host\core\ringbuffer.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="server_base.cpp">
+    <ClCompile Include="..\..\..\host\core\server_base.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="stream_server.cpp">
+    <ClCompile Include="..\..\..\host\core\stream_server.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
     <ClCompile Include="notify_icon.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="isdb2056_device.cpp">
+    <ClCompile Include="..\..\..\host\devices\isdb2056_device.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="isdbt2071_device.cpp">
+    <ClCompile Include="..\..\..\host\devices\isdbt2071_device.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\host\devices\t230c_device.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\host\devices\t230c_protocol.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\host\devices\t230c_silicon.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\host\devices\siano_device.cpp"><Filter>ソース ファイル</Filter></ClCompile>
+    <ClCompile Include="..\..\..\host\devices\siano_protocol.cpp"><Filter>ソース ファイル</Filter></ClCompile>
+    <ClCompile Include="..\..\..\host\devices\siano_wire.cpp"><Filter>ソース ファイル</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\..\driver\cxd2856er.h">
+    <ClInclude Include="..\..\..\driver\common\demod\cxd2856er.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\driver\cxd2858er.h">
+    <ClInclude Include="..\..\..\driver\common\demod\cxd2858er.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\driver\i2c_comm.h">
+    <ClInclude Include="..\..\..\driver\common\include\i2c_comm.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\driver\it930x.h">
+    <ClInclude Include="..\..\..\driver\common\bridge\it930x.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\driver\itedtv_bus.h">
+    <ClInclude Include="..\..\..\driver\common\include\itedtv_bus.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\driver\r850.h">
+    <ClInclude Include="..\..\..\driver\common\tuner\r850.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\driver\rt710.h">
+    <ClInclude Include="..\..\..\driver\common\bridge\siano_wire_core.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\driver\tc90522.h">
+    <ClInclude Include="..\..\..\driver\common\bridge\t230c_usb.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\driver\tsmf.h">
+    <ClInclude Include="..\..\..\driver\common\ts\tsmf.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\command.hpp">
+    <ClInclude Include="..\..\..\driver\common\demod\si2168.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\config.hpp">
+    <ClInclude Include="..\..\..\driver\common\tuner\si2141.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\msg.h">
+    <ClInclude Include="..\..\..\driver\common\ts\t230c_ts_sync.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\pipe.hpp">
+    <ClInclude Include="..\..\..\driver\common\tuner\rt710.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\driver\common\demod\tc90522.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\host\common\command.hpp">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\host\common\config.hpp">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\host\common\msg.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\host\common\pipe.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="..\common\security_attributes.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\type.hpp">
+    <ClInclude Include="..\..\..\host\common\type.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\util.hpp">
+    <ClInclude Include="..\..\..\host\common\util.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="ctrl_server.hpp">
+    <ClInclude Include="..\..\..\host\core\ctrl_server.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="device_base.hpp">
+    <ClInclude Include="..\..\..\host\core\device_base.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="device_definition_set.hpp">
+    <ClInclude Include="..\..\..\host\core\device_definition_set.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="device_manager.hpp">
+    <ClInclude Include="..\..\..\host\core\device_factory.hpp">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\host\core\device_manager.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="device_notifier.hpp">
@@ -188,42 +236,48 @@
     <ClInclude Include="notify_icon.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="pipe_server.hpp">
+    <ClInclude Include="..\..\..\host\core\pipe_server.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="px4_device.hpp">
+    <ClInclude Include="..\..\..\host\devices\px4_device.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="pxmlt_device.hpp">
+    <ClInclude Include="..\..\..\host\devices\pxmlt_device.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="receiver_base.hpp">
+    <ClInclude Include="..\..\..\host\core\receiver_base.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="receiver_manager.hpp">
+    <ClInclude Include="..\..\..\host\core\receiver_manager.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="resource.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="ringbuffer.hpp">
+    <ClInclude Include="..\..\..\host\core\ringbuffer.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="server_base.hpp">
+    <ClInclude Include="..\..\..\host\core\server_base.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="stream_server.hpp">
+    <ClInclude Include="..\..\..\host\core\stream_server.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="winusb_compat.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="isdb2056_device.hpp">
+    <ClInclude Include="..\..\..\host\devices\isdb2056_device.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="isdbt2071_device.hpp">
+    <ClInclude Include="..\..\..\host\devices\isdbt2071_device.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\host\devices\t230c_device.hpp"><Filter>ヘッダー ファイル</Filter></ClInclude>
+    <ClInclude Include="..\..\..\host\devices\t230c_protocol.hpp"><Filter>ヘッダー ファイル</Filter></ClInclude>
+    <ClInclude Include="..\..\..\host\devices\t230c_silicon.hpp"><Filter>ヘッダー ファイル</Filter></ClInclude>
+    <ClInclude Include="..\..\..\host\devices\siano_device.hpp"><Filter>ヘッダー ファイル</Filter></ClInclude>
+    <ClInclude Include="..\..\..\host\devices\siano_protocol.hpp"><Filter>ヘッダー ファイル</Filter></ClInclude>
+    <ClInclude Include="..\..\..\host\devices\siano_wire.hpp"><Filter>ヘッダー ファイル</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\pkg\DriverHost_PX4\DriverHost_PX4.ini">

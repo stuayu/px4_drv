@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release-static|Win32"><Configuration>Release-static</Configuration><Platform>Win32</Platform></ProjectConfiguration>
+    <ProjectConfiguration Include="Release-static|x64"><Configuration>Release-static</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>{80C1DB03-9606-4BAA-8794-5BBE6551A4D4}</ProjectGuid>
+    <RootNamespace>SianoProtocolTest</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseDebugLibraries>false</UseDebugLibraries>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="Shared" />
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup>
+    <OutDir>$(MSBuildThisFileDirectory)..\build\$(PlatformTarget)\$(Configuration)\</OutDir>
+    <IntDir>$(MSBuildThisFileDirectory)build\siano_protocol_test\$(PlatformTarget)\$(Configuration)\</IntDir>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(MSBuildThisFileDirectory)..\..\host\common;$(MSBuildThisFileDirectory)..\..\host\core;$(MSBuildThisFileDirectory)..\..\host\devices;$(MSBuildThisFileDirectory)..\src\DriverHost_PX4;$(MSBuildThisFileDirectory)..\..\driver\common\include;$(MSBuildThisFileDirectory)..\..\driver\common\bridge;$(MSBuildThisFileDirectory)..\..\driver\common\demod;$(MSBuildThisFileDirectory)..\..\driver\common\tuner;$(MSBuildThisFileDirectory)..\..\driver\common\ts</IncludePath>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+    </ClCompile>
+    <Link><EnableCOMDATFolding>true</EnableCOMDATFolding><OptimizeReferences>true</OptimizeReferences></Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="siano_protocol_test.cpp" />
+    <ClCompile Include="..\..\host\devices\siano_protocol.cpp" />
+    <ClCompile Include="..\..\host\devices\siano_wire.cpp" />
+    <ClCompile Include="..\..\driver\common\bridge\siano_wire_core.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\host\devices\siano_protocol.hpp" />
+    <ClInclude Include="..\..\host\devices\siano_wire.hpp" />
+    <ClInclude Include="..\..\driver\common\bridge\siano_wire_core.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

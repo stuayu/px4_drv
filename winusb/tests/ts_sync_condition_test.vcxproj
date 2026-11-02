@@ -26,7 +26,7 @@
   <PropertyGroup>
     <OutDir>$(MSBuildThisFileDirectory)..\build\$(PlatformTarget)\$(Configuration)\</OutDir>
     <IntDir>$(MSBuildThisFileDirectory)build\ts_sync_condition_test\$(PlatformTarget)\$(Configuration)\</IntDir>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(MSBuildThisFileDirectory)..\..\driver</IncludePath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(MSBuildThisFileDirectory)..\..\driver\common\include;$(MSBuildThisFileDirectory)..\..\driver\common\bridge;$(MSBuildThisFileDirectory)..\..\driver\common\demod;$(MSBuildThisFileDirectory)..\..\driver\common\tuner;$(MSBuildThisFileDirectory)..\..\driver\common\ts</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
@@ -42,7 +42,7 @@
     <Link><EnableCOMDATFolding>true</EnableCOMDATFolding><OptimizeReferences>true</OptimizeReferences></Link>
   </ItemDefinitionGroup>
   <ItemGroup><ClCompile Include="ts_sync_condition_test.cpp" /></ItemGroup>
-  <ItemGroup><ClInclude Include="..\..\driver\ts_sync.h" /></ItemGroup>
+  <ItemGroup><ClInclude Include="..\..\driver\common\ts\ts_sync.h" /></ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
 </Project>

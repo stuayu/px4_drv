@@ -5,6 +5,7 @@
 #include <mutex>
 #include <fstream>
 #include <cstdlib>
+#include <cstring>
 
 #include "util.hpp"
 
@@ -22,33 +23,38 @@ bool ChannelSet::Load(const std::wstring &path, px4::SystemType system) noexcept
 
 	while (true) {
 		char line[256];
-		std::streamsize gcount;
-		char *tmp_head, *tmp_tail = nullptr;
+		char *line_head, *tmp_head, *tmp_tail = nullptr;
 
-		if (!ifs.getline(line, 256))
+		if (!ifs.getline(line, 256)) {
+			/* 長すぎる行や I/O エラーを EOF と区別し、部分的な表を成功扱いにしない。 */
+			if (ifs.bad() || !ifs.eof())
+				return false;
 			break;
-
-		gcount = ifs.gcount();
-		if (!gcount)
-			continue;
-
-		if (line[gcount] == '\r') {
-			// CRLF
-			line[gcount] = '\0';
-			gcount--;
 		}
 
-		if (line[0] == ';') {
+		/* gcount には区切り文字も含まれるため、文字列の長さで CR を検査する。 */
+		const std::size_t line_length = std::strlen(line);
+		if (line_length && line[line_length - 1] == '\r')
+			line[line_length - 1] = '\0';
+
+		// Empty separator lines must not be interpreted as channel 0.  In
+		// particular, a blank line after a CATV space used to replace C13 (the
+		// first channel) with an empty entry.
+		line_head = line;
+		while (*line_head == ' ' || *line_head == '\t')
+			line_head++;
+
+		if (*line_head == '\0' || *line_head == ';') {
 			// comment
 			continue;
 		}
 
-		if (line[0] == '$') {
+		if (*line_head == '$') {
 			// tuning space
 			std::wstring name;
 			std::uint32_t space_id;
 
-			tmp_head = line + 1;
+			tmp_head = line_head + 1;
 
 			// name
 			Split(&tmp_head, &tmp_tail, '\t');
@@ -67,7 +73,7 @@ bool ChannelSet::Load(const std::wstring &path, px4::SystemType system) noexcept
 			std::uint32_t space_id, ch_id;
 			ChannelInfo ch;
 
-			tmp_head = line;
+			tmp_head = line_head;
 
 			// name
 			Split(&tmp_head, &tmp_tail, '\t');
@@ -113,6 +119,29 @@ bool ChannelSet::Load(const std::wstring &path, px4::SystemType system) noexcept
 	}
 
 	return true;
+}
+
+bool ChannelSet::LoadWithFallback(const std::wstring *path, const std::wstring &default_path, bool allow_fallback, px4::SystemType system) noexcept
+{
+	if (!path && !allow_fallback) {
+		Clear();
+		return false;
+	}
+
+	if (path) {
+		if (Load(*path, system))
+			return true;
+
+		Clear();
+		if (!allow_fallback)
+			return false;
+	}
+
+	if (Load(default_path, system))
+		return true;
+
+	Clear();
+	return false;
 }
 
 bool ChannelSet::Merge(ChannelSet &chset) noexcept

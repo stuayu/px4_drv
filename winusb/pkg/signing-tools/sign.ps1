@@ -37,7 +37,7 @@ Get-ChildItem -LiteralPath $InfPath -Filter '*.inf' -File | ForEach-Object {
         $normalized_stream.Dispose()
     }
 
-    if (-not [System.Linq.Enumerable]::SequenceEqual[byte]($source_bytes, $normalized_bytes)) {
+    if (-not [System.Collections.StructuralComparisons]::StructuralEqualityComparer.Equals($source_bytes, $normalized_bytes)) {
         [System.IO.File]::WriteAllBytes($_.FullName, $normalized_bytes)
         Write-Host "Driver INF line endings normalized: $($_.Name)"
     }

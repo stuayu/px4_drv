@@ -35,7 +35,7 @@
   <PropertyGroup>
     <OutDir>$(MSBuildThisFileDirectory)..\build\$(PlatformTarget)\$(Configuration)\</OutDir>
     <IntDir>$(MSBuildThisFileDirectory)build\ringbuffer_purge_test\$(PlatformTarget)\$(Configuration)\</IntDir>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(MSBuildThisFileDirectory)..\src\DriverHost_PX4</IncludePath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(MSBuildThisFileDirectory)..\..\host\common;$(MSBuildThisFileDirectory)..\..\host\core;$(MSBuildThisFileDirectory)..\..\host\devices;$(MSBuildThisFileDirectory)..\src\DriverHost_PX4</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
@@ -58,10 +58,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ringbuffer_purge_test.cpp" />
-    <ClCompile Include="..\src\DriverHost_PX4\ringbuffer.cpp" />
+    <ClCompile Include="..\..\host\core\ringbuffer.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\src\DriverHost_PX4\ringbuffer.hpp" />
+    <ClInclude Include="..\..\host\core\ringbuffer.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

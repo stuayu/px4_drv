@@ -35,7 +35,7 @@
   <PropertyGroup>
     <OutDir>$(MSBuildThisFileDirectory)..\build\$(PlatformTarget)\$(Configuration)\</OutDir>
     <IntDir>$(MSBuildThisFileDirectory)build\chset_isdbc_test\$(PlatformTarget)\$(Configuration)\</IntDir>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(MSBuildThisFileDirectory)..\src\common;$(MSBuildThisFileDirectory)..\src\BonDriver_PX4</IncludePath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(MSBuildThisFileDirectory)..\..\host\common;$(MSBuildThisFileDirectory)..\src\common;$(MSBuildThisFileDirectory)..\..\driver\common\include;$(MSBuildThisFileDirectory)..\src\BonDriver_PX4</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>

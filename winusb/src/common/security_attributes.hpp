@@ -3,6 +3,7 @@
 #pragma once
 
 #include <stdexcept>
+#include <string>
 
 #include <windows.h>
 #include <aclapi.h>

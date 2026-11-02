@@ -23,14 +23,14 @@
   <PropertyGroup>
     <OutDir>$(MSBuildThisFileDirectory)..\build\$(PlatformTarget)\$(Configuration)\</OutDir>
     <IntDir>$(MSBuildThisFileDirectory)build\tsmf_filter_test\$(PlatformTarget)\$(Configuration)\</IntDir>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(MSBuildThisFileDirectory)..\src\common;$(MSBuildThisFileDirectory)..\src\DriverHost_PX4;$(MSBuildThisFileDirectory)..\..\driver</IncludePath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(MSBuildThisFileDirectory)..\..\host\common;$(MSBuildThisFileDirectory)..\src\DriverHost_PX4;$(MSBuildThisFileDirectory)..\..\driver\common\include;$(MSBuildThisFileDirectory)..\..\driver\common\ts</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile><WarningLevel>Level4</WarningLevel><RuntimeLibrary>MultiThreaded</RuntimeLibrary><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions></ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="tsmf_filter_test.c" />
-    <ClCompile Include="..\..\driver\tsmf.c" />
+    <ClCompile Include="..\..\driver\common\ts\tsmf.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

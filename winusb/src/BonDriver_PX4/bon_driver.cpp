@@ -17,7 +17,7 @@
 #include "pipe_client.hpp"
 #include "command.hpp"
 #include "util.hpp"
-#include "../../../driver/isdbc_channel.h"
+#include "isdbc_channel.h"
 
 namespace px4 {
 
@@ -185,27 +185,39 @@ bool BonDriver::Init()
 
 		if ((systems_ & px4::SystemType::ISDB_C) == px4::SystemType::ISDB_C) {
 			px4::ChannelSet chset_c;
-			bool result;
+			std::wstring chset_path;
+			bool has_chset_path = false;
+			/*
+			 * 既定の BonDriver_PX4-C.ChSet.txt は PX-MLT 用の周波数補正を含む。
+			 * 同じフォルダーに置かれた別機種の BonDriver が指定 ChSet を読めなかったとき、
+			 * その補正で選局しないよう、INI の ChSetFallback=0 で切り替えを止められる。
+			 * 既存の INI は未指定のため、従来どおり既定 ChSet へ切り替える。
+			 */
+			bool allow_fallback = true;
 
 			try {
-				std::wstring chset_path = configs_.Get(L"BonDriver.ISDB-C").Get(L"ChSetPath");
+				auto &config = configs_.Get(L"BonDriver.ISDB-C");
+
+				try {
+					allow_fallback = !!px4::util::wtoi(config.Get(L"ChSetFallback"));
+				} catch (const std::out_of_range &) {}
+
+				chset_path = config.Get(L"ChSetPath");
 				WCHAR path[MAX_PATH];
 
 				if (PathIsRelativeW(chset_path.c_str()) && PathCanonicalizeW(path, (dir_path + chset_path).c_str()))
 					chset_path = path;
 
-				result = chset_c.Load(chset_path, px4::SystemType::ISDB_C);
-			} catch (const std::out_of_range&) {
-				result = false;
-			}
+				has_chset_path = true;
+			} catch (const std::out_of_range&) {}
 
-			if (!result) {
-				chset_c.Clear();
-				result = chset_c.Load(dir_path + L"BonDriver_PX4-C.ChSet.txt", px4::SystemType::ISDB_C);
-			}
+			const bool result = chset_c.LoadWithFallback(has_chset_path ? &chset_path : nullptr,
+				dir_path + L"BonDriver_PX4-C.ChSet.txt", allow_fallback, px4::SystemType::ISDB_C);
 
 			if (result)
 				chset_.Merge(chset_c);
+			else if (!allow_fallback)
+				msg_err("Init: ISDB-C ChSet is missing or could not be loaded (%ls); fallback is disabled by ChSetFallback=0\n", chset_path.c_str());
 		}
 
 		if ((systems_ & px4::SystemType::J83B) == px4::SystemType::J83B) {
@@ -624,7 +636,8 @@ const BOOL BonDriver::SetChannel(const DWORD dwSpace, const DWORD dwChannel)
 			if (system == px4::SystemType::ISDB_S) {
 				if (!lnb_power_state_) {
 					ret = ctrl_client_.SetLnbVoltage(15);
-					lnb_power_state_ = true;
+					/* 給電に成功した場合だけ通電状態にする。 */
+					lnb_power_state_ = ret;
 				}
 			} else if (lnb_power_state_) {
 				ret = ctrl_client_.SetLnbVoltage(0);

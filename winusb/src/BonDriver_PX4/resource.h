@@ -3,7 +3,7 @@
 #pragma once
 
 #include <windows.h>
-#include "../common/version.h"
+#include "version.h"
 
 #define VER_COMMENTS_STR		""
 #define VER_COMPANYNAME_STR		"nns779"

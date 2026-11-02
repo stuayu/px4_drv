@@ -24,14 +24,14 @@ cd $(dirname $0)
 # Update version in dkms.conf
 sed -i -e "s/^PACKAGE_VERSION=.*/PACKAGE_VERSION=\"$version\"/" dkms.conf
 
-# Update version in driver/driver_module.h
-sed -i -e "s/^#define\s\s*PX4_DRV_VERSION\s\s*.*/#define PX4_DRV_VERSION	\"$version\"/" driver/driver_module.h
+# Update version in driver/linux/driver_module.h
+sed -i -e "s/^#define\s\s*PX4_DRV_VERSION\s\s*.*/#define PX4_DRV_VERSION	\"$version\"/" driver/linux/driver_module.h
 
 # Update version shared by BonDriver_PX4, DriverHost_PX4, and WinSCard_PX4
-sed -i -e "s/^#define\s\s*VER_FILE\s\s*.*/#define VER_FILE	${version//./,},0/" winusb/src/common/version.h
-sed -i -e "s/^#define\s\s*VER_FILE_STR\s\s*.*/#define VER_FILE_STR	\"$version\"/" winusb/src/common/version.h
-sed -i -e "s/^#define\s\s*VER_PRODUCT\s\s*.*/#define VER_PRODUCT	${version//./,},0/" winusb/src/common/version.h
-sed -i -e "s/^#define\s\s*VER_PRODUCT_STR\s\s*.*/#define VER_PRODUCT_STR	\"$version\"/" winusb/src/common/version.h
+sed -i -e "s/^#define\s\s*VER_FILE\s\s*.*/#define VER_FILE	${version//./,},0/" host/common/version.h
+sed -i -e "s/^#define\s\s*VER_FILE_STR\s\s*.*/#define VER_FILE_STR	\"$version\"/" host/common/version.h
+sed -i -e "s/^#define\s\s*VER_PRODUCT\s\s*.*/#define VER_PRODUCT	${version//./,},0/" host/common/version.h
+sed -i -e "s/^#define\s\s*VER_PRODUCT_STR\s\s*.*/#define VER_PRODUCT_STR	\"$version\"/" host/common/version.h
 
 # Update version in README.md
 sed -i -e "s/px4-drv-dkms_[0-9]\+\.[0-9]\+\.[0-9]\+_all\.deb/px4-drv-dkms_${version}_all.deb/g" README.md

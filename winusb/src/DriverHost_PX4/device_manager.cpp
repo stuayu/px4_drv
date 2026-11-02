@@ -8,10 +8,6 @@
 #include <setupapi.h>
 
 #include "msg.h"
-#include "px4_device.hpp"
-#include "pxmlt_device.hpp"
-#include "isdb2056_device.hpp"
-#include "isdbt2071_device.hpp"
 
 namespace px4 {
 
@@ -45,16 +41,7 @@ DeviceManager::DeviceManager(const px4::DeviceDefinitionSet &device_defs, px4::R
 	auto &all_devs = device_defs.GetAll();
 
 	for (auto it = all_devs.cbegin(); it != all_devs.cend(); ++it) {
-		DeviceType type = DeviceType::UNKNOWN;
-
-		if (it->first == L"PX4")
-			type = DeviceType::PX4;
-		else if (it->first == L"PXMLT")
-			type = DeviceType::PXMLT;
-		else if (it->first == L"ISDB2056")
-			type = DeviceType::ISDB2056;
-		else if (it->first == L"ISDBT2071")
-			type = DeviceType::ISDBT2071;
+		const DeviceType type = ParseDeviceType(it->first);
 
 		if (type == DeviceType::UNKNOWN)
 			continue;
@@ -132,67 +119,20 @@ void DeviceManager::Add(const std::wstring &path, const std::pair<DeviceType, px
 	 */
 	try {
 
-	/* 機種追加時に型と DeviceType の対応をこの場で確認できるよう生成分岐を明示する */
-	switch (def.first) {
-	case px4::DeviceType::PX4:
-	{
-		auto dev = std::make_shared<Px4Device>(path, def.second, ++index_, receiver_manager_);
-
-		if (!dev->Init()) {
-			if (dev->HasCardReader())
-				card_reader_generation_.fetch_add(1);
-			devices_.emplace(path, std::move(dev));
-		}
-
-		break;
-	}
-
-	case px4::DeviceType::PXMLT:
-	{
-		auto dev = std::make_shared<PxMltDevice>(path, def.second, ++index_, receiver_manager_);
-
-		if (!dev->Init()) {
-			if (dev->HasCardReader())
-				card_reader_generation_.fetch_add(1);
-			devices_.emplace(path, std::move(dev));
-		}
-
-		break;
-	}
-
-	case px4::DeviceType::ISDB2056:
-	{
-		auto dev = std::make_shared<Isdb2056Device>(path, def.second, ++index_, receiver_manager_);
-
-		if (!dev->Init()) {
-			if (dev->HasCardReader())
-				card_reader_generation_.fetch_add(1);
-			devices_.emplace(path, std::move(dev));
-		}
-
-		break;
-	}
-
-	case px4::DeviceType::ISDBT2071:
-	{
-		auto dev = std::make_shared<Isdbt2071Device>(path, def.second, ++index_, receiver_manager_);
-
-		if (!dev->Init()) {
-			if (dev->HasCardReader())
-				card_reader_generation_.fetch_add(1);
-			devices_.emplace(path, std::move(dev));
-		}
-
-		break;
-	}
-
-	default:
-		break;
+	const CreatedDevice created = CreateDevice(def.first, path, def.second,
+		++index_, receiver_manager_);
+	if (created.device) {
+		if (created.has_card_reader)
+			card_reader_generation_.fetch_add(1);
+		devices_.emplace(path, created.device);
+	} else {
+		msg_err("px4::DeviceManager::Add: %ls Init() failed. (path: %ls, ret: %d)\n",
+			DeviceTypeName(def.first), path.c_str(), created.init_result);
 	}
 
 	} catch (const DeviceError &ex) {
 		/* 失敗した1台だけを登録対象から外し、他の機器の列挙と受信は継続する */
-		msg_err("px4::DeviceManager::Add: %s\n", ex.what());
+		msg_err("px4::DeviceManager::Add: %s (%ls)\n", ex.what(), path.c_str());
 	}
 
 	return;

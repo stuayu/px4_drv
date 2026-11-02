@@ -45,7 +45,7 @@ ATR の解析と T=1 (再送・WTX・APDU の分割・APDU 全体の期限) は�
 
 ### カーネル側
 
-ioctl のコマンドの振り分けと `it930x_bcas_*()` の呼び出しは、機種共通層の [`px4_card.c`](../driver/px4_card.c) にまとめています。  
+ioctl のコマンドの振り分けと `it930x_bcas_*()` の呼び出しは、機種共通層の [`px4_card.c`](../driver/linux/px4_card.c) にまとめています。  
 各機種は `struct px4_card_backend` で次の4つだけを渡し、機種ごとに同じファイル操作を複製しないようにしています。
 
 | 項目 | 内容 |

@@ -2,6 +2,10 @@
 
 #pragma once
 
+#ifdef __APPLE__
+#include "misc_posix.h"
+#else
+
 #include <stdint.h>
 #include <stdbool.h>
 #include <errno.h>
@@ -33,6 +37,7 @@ typedef uint32_t u32;
 static inline void * kzalloc(size_t size, int dummy)
 {
 	void *p;
+	(void)dummy;
 
 	p = malloc(size);
 	if (p)
@@ -72,16 +77,12 @@ struct device {
 
 #define printk(format, ...)			msg_printf(format, ##__VA_ARGS__)
 
-#define dev_print(level, dev, format, ...)	msg_printf("[" level "] %s %s: " format, (dev)->driver_name, (dev)->device_name, ##__VA_ARGS__)
-
-#define dev_err(dev, format, ...)		dev_print("ERR", dev, format, ##__VA_ARGS__)
-#define dev_warn(dev, format, ...)		dev_print("WARN", dev, format, ##__VA_ARGS__)
-#define dev_info(dev, format, ...)		dev_print("INFO", dev, format, ##__VA_ARGS__)
-#if defined(_DEBUG) || defined(_DEBUG_MSG)
-#define dev_dbg(dev, format, ...)		dev_print("DBG", dev, format, ##__VA_ARGS__)
-#else
-#define dev_dbg(dev, format, ...)
-#endif
+/* dev_* は共通層の px4_log へ写像する。DEBUG / TRACE はビルド種別に関係なく、
+ * 実行時の LogLevel で出力を決める。 */
+#define dev_err(dev, format, ...)		px4_log_err((dev), PX4_LOG_CAT_DEVICE, format, ##__VA_ARGS__)
+#define dev_warn(dev, format, ...)		px4_log_warn((dev), PX4_LOG_CAT_DEVICE, format, ##__VA_ARGS__)
+#define dev_info(dev, format, ...)		px4_log_info((dev), PX4_LOG_CAT_DEVICE, format, ##__VA_ARGS__)
+#define dev_dbg(dev, format, ...)		px4_log_debug((dev), PX4_LOG_CAT_DEVICE, format, ##__VA_ARGS__)
 
 typedef int atomic_t;
 
@@ -110,3 +111,5 @@ struct firmware {
 
 int request_firmware(const struct firmware **fw, const char *name, struct device *);
 void release_firmware(const struct firmware *fw);
+
+#endif /* __APPLE__ */
