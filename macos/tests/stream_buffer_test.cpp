@@ -188,6 +188,11 @@ bool TsmfRejectsPartialPacket()
 
 	std::uint8_t partial[kPacket - 1] = {};
 	partial[0] = 0x47;
+	partial[2] = 0x2f;
+	partial[3] = 0x10;
+	partial[4] = 0x1a;
+	partial[5] = 0x86;
+	partial[6] = 0x01;
 	std::size_t size = sizeof(partial);
 	const bool write_ok = buffer.Write(partial, size);
 	buffer.Stop();
