@@ -48,6 +48,10 @@ endif
 ifneq ($(shell grep -s 'class_create(const char \*name)' $(srctree)/include/linux/device/class.h),)
 ccflags-y += -DPTX_CLASS_CREATE_WITHOUT_OWNER
 endif
+# 同じく 6.2 の class の devnode の引数を const にした変更も、版数ではなくヘッダーの宣言で判定する。
+ifneq ($(shell grep -s -F '(*devnode)(const struct device *dev, umode_t *mode)' $(srctree)/include/linux/device/class.h),)
+ccflags-y += -DPTX_CLASS_DEVNODE_CONST_DEVICE
+endif
 ifneq ($(PSB_DEBUG),0)
 ccflags-y += -DPSB_DEBUG
 endif

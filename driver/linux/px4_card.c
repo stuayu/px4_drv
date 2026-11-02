@@ -517,7 +517,7 @@ void px4_card_unregister(struct px4_card *card)
 }
 
 /* sysfs では /sys/class/px4card/<ID> 、デバイスファイルは /dev/px4card/<ID> にする */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,2,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,2,0) || defined(PTX_CLASS_DEVNODE_CONST_DEVICE)
 static char *px4_card_devnode(const struct device *dev, umode_t *mode)
 #else
 static char *px4_card_devnode(struct device *dev, umode_t *mode)
@@ -534,7 +534,7 @@ int px4_card_init(void)
 	if (ret)
 		return ret;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,4,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,4,0) || defined(PTX_CLASS_CREATE_WITHOUT_OWNER)
 	px4_card_class = class_create("px4card");
 #else
 	px4_card_class = class_create(THIS_MODULE, "px4card");
