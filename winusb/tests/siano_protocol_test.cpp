@@ -30,6 +30,14 @@ void put16(std::uint8_t *p, std::uint16_t value)
 	p[1] = static_cast<std::uint8_t>(value >> 8);
 }
 
+void put32(std::uint8_t *p, std::uint32_t value)
+{
+	p[0] = static_cast<std::uint8_t>(value);
+	p[1] = static_cast<std::uint8_t>(value >> 8);
+	p[2] = static_cast<std::uint8_t>(value >> 16);
+	p[3] = static_cast<std::uint8_t>(value >> 24);
+}
+
 std::vector<std::uint8_t> response(std::uint16_t type,
 				   const std::uint8_t *payload = nullptr,
 				   std::size_t payload_size = 0)
@@ -55,6 +63,8 @@ public:
 	unsigned int firmware_chunks = 0;
 	unsigned int pid_filter_requests = 0;
 	bool stale_lock_before_tune_response = false;
+	bool demod_locked = true;
+	bool external_lna_on = false;
 
 	int Send(const std::uint8_t *message, std::size_t length,
 		 std::uint32_t) noexcept override
@@ -87,8 +97,10 @@ public:
 		}
 		if (type == 653) { // GET_STATISTICS_EX
 			std::array<std::uint8_t, 32> stats{};
-			stats[16] = stale_lock_before_tune_response ? 0 : 1;
-			stats[24] = 13; // SNR: 13 dB
+			put32(stats.data() + 12, demod_locked && !stale_lock_before_tune_response ? 1 : 0);
+			put32(stats.data() + 16, external_lna_on ? 1 : 0);
+			put32(stats.data() + 20, 13); // SNR: 13 dB
+			put32(stats.data() + 24, static_cast<std::uint32_t>(-74)); // RSSI: -74 dBm
 			auto stats_reply = response(654, stats.data(), stats.size());
 			return protocol->HandleTransfer(stats_reply.data(), stats_reply.size());
 		}
@@ -213,5 +225,18 @@ int main()
 		require(cold_transport.firmware_chunks == 1);
 		require(cold_transport.pid_filter_requests == 0);
 		std::filesystem::remove(firmware_path);
+	}
+
+	{
+		FakeTransport unlocked_transport;
+		unlocked_transport.demod_locked = false;
+		unlocked_transport.external_lna_on = true;
+		px4::siano::Protocol unlocked_protocol(unlocked_transport, 0, {});
+		unlocked_transport.protocol = &unlocked_protocol;
+		require(unlocked_protocol.Initialize(std::filesystem::path("unused-firmware.inp"),
+						    std::chrono::milliseconds(100)) == 0);
+		require(unlocked_protocol.TuneFrequencyHz(557142857U,
+								 std::chrono::milliseconds(250)) == -ETIMEDOUT);
+		require(!unlocked_protocol.IsLocked());
 	}
 }

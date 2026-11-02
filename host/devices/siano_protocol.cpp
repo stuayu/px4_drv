@@ -295,10 +295,11 @@ public:
 			version_.firmware_version =
 				(static_cast<std::uint16_t>(payload[10]) << 8) | payload[11];
 		} else if (frame.type == kGetStatisticsExResponse && frame.payload_length >= 20) {
-			locked_ = ReadLe32(payload + 16) != 0;
-			if (frame.payload_length >= 28) {
+			/* sms_isdbt_stats_ex: statistics_type/full_size/rf_lock/demod_lock precede LNA and SNR. */
+			locked_ = ReadLe32(payload + 12) != 0;
+			if (frame.payload_length >= 24) {
 				/* Linux Siano DVB API は SNR を 0.001 dB 単位で公開する。 */
-				const auto scaled = static_cast<std::int64_t>(ReadLeS32(payload + 24)) * 1000;
+				const auto scaled = static_cast<std::int64_t>(ReadLeS32(payload + 20)) * 1000;
 				cnr_millidb_ = static_cast<std::int32_t>(std::clamp<std::int64_t>(scaled,
 					std::numeric_limits<std::int32_t>::min(),
 					std::numeric_limits<std::int32_t>::max()));
