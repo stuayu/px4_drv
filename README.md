@@ -708,6 +708,7 @@ macOS 版は、ユーザー空間デーモン `DriverHost_PX4` として動作�
 
 `it930x-firmware.bin` を `macos/build/` に置きます。ファームウェアは自動ではコピーされません。
 リポジトリに同梱している抽出済みのファームウェアを使う場合は、次のコマンドだけで完了です。
+GitHub Releases の macOS アーカイブには、このファームウェアも含まれます。
 
 	$ cp etc/it930x-firmware.bin macos/build/
 

@@ -79,8 +79,11 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist/px4_drv_macos_${{ matrix.arch }}
-          cp macos/build/DriverHost_PX4 macos/build/px4rec macos/build/DriverHost_PX4.ini macos/build/isdbt_rio.inp macos/build/LICENCE.siano dist/px4_drv_macos_${{ matrix.arch }}/
+          cp macos/build/DriverHost_PX4 macos/build/px4rec macos/build/DriverHost_PX4.ini macos/build/isdbt_rio.inp macos/build/LICENCE.siano etc/it930x-firmware.bin dist/px4_drv_macos_${{ matrix.arch }}/
           tar -C dist -czf dist/px4_drv_macos_${{ matrix.arch }}.tar.gz px4_drv_macos_${{ matrix.arch }}
+          for file in DriverHost_PX4 px4rec DriverHost_PX4.ini isdbt_rio.inp LICENCE.siano it930x-firmware.bin; do
+            tar -tzf dist/px4_drv_macos_${{ matrix.arch }}.tar.gz | grep -Fx "px4_drv_macos_${{ matrix.arch }}/$file"
+          done
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
