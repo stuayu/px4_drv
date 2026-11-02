@@ -60,8 +60,8 @@ Windows 側で Linux 実装へ直接関係する直近のコミットは次の�
 Windows 版では、カードの物理操作と T=1 プロトコル処理を分離しています。  
 Linux 版でも、この境界を維持してください。  
 
-[`host/core/card_device.hpp`](../winusb/src/DriverHost_PX4/card_device.hpp) は、カード検出、リセット、送受信、ボーレート変更を機種実装へ要求するインターフェースです。  
-[`host/core/smart_card.cpp`](../winusb/src/DriverHost_PX4/smart_card.cpp) は、ATR 解析、T=1 の状態、再送、タイムアウト、APDU 分割を担当します。  
+[`host/core/card_device.hpp`](../host/core/card_device.hpp) は、カード検出、リセット、送受信、ボーレート変更を機種実装へ要求するインターフェースです。
+[`host/core/smart_card.cpp`](../host/core/smart_card.cpp) は、ATR 解析、T=1 の状態、再送、タイムアウト、APDU 分割を担当します。
 
 T=1 の状態機械をカーネルへ置く構成は、次の理由から見送りました。  
 カーネル側はカード用デバイスの寿命、排他、共有電源、IT930x UART 操作を担当し、ユーザー空間の PC/SC IFD ハンドラーが ATR と T=1 を担当する構成を推奨します。  
@@ -75,7 +75,7 @@ T=1 の状態機械をカーネルへ置く構成は、次の理由から見送�
 
 ### ATR と ACAS
 
-ATR の解析は [`SmartCard::ParseAtr()`](../winusb/src/DriverHost_PX4/smart_card.cpp) を基準にします。  
+ATR の解析は [`SmartCard::ParseAtr()`](../host/core/smart_card.cpp) を基準にします。
 製品コードやカーネルドライバへ B-CAS 固有 ATR の一覧を持ち込まないでください。  
 ACAS には B-CAS カード互換機能があるため、カード名の推定より、ATR が示す通信条件を正しく適用することが重要です。  
 
@@ -94,11 +94,11 @@ Windows 側では、TA1 が `0x13` のカードを ACAS として扱い、最初
 IFS 要求がタイムアウトか形式エラーになった場合は、RESYNCH の後に IFS を再送します。  
 
 B-CAS では、RESYNCH の後に IFS 要求を送ります。  
-この順序差はカードの実際の応答挙動に合わせたものなので、見た目の対称性のために統一せず、現在の [`SmartCard::InitializeT1()`](../winusb/src/DriverHost_PX4/smart_card.cpp) と同じ順序を保ってください。  
+この順序差はカードの実際の応答挙動に合わせたものなので、見た目の対称性のために統一せず、現在の [`SmartCard::InitializeT1()`](../host/core/smart_card.cpp) と同じ順序を保ってください。
 
 ### APDU と T=1
 
-T=1 の実装元は [`host/core/smart_card.cpp`](../winusb/src/DriverHost_PX4/smart_card.cpp) です。  
+T=1 の実装元は [`host/core/smart_card.cpp`](../host/core/smart_card.cpp) です。
 Linux 向けに書き直す際も、次の挙動を契約として維持します。  
 
 - 送信シーケンスと受信シーケンスを、セッションの初期化時にリセット
@@ -122,8 +122,8 @@ Linux 側でも同じ分割を行ってください。
 
 ### カード抜去と通信失敗
 
-[`SmartCard::GetStatus()`](../winusb/src/DriverHost_PX4/smart_card.cpp) は、カードの挿入を検出するとセッションを初期化し、抜去を検出すると以前の状態を破棄します。  
-[`SmartCard::Transmit()`](../winusb/src/DriverHost_PX4/smart_card.cpp) は、送信前にカードの存在を確認し、未初期化なら初期化します。  
+[`SmartCard::GetStatus()`](../host/core/smart_card.cpp) は、カードの挿入を検出するとセッションを初期化し、抜去を検出すると以前の状態を破棄します。
+[`SmartCard::Transmit()`](../host/core/smart_card.cpp) は、送信前にカードの存在を確認し、未初期化なら初期化します。
 通信エラーを返す場合は、次の要求が古い連番や ATR を再利用しないよう、セッション全体を無効にします。  
 
 ATR が形式不正だった場合に限り、カードリセットを1回だけ再実行します。  
@@ -156,7 +156,7 @@ Linux 側のデバイス実装から、この API をそのまま呼び出して
 
 ### PX4 系
 
-Windows 側の実装は [`host/devices/px4_device.cpp`](../winusb/src/DriverHost_PX4/px4_device.cpp) を参照してください。  
+Windows 側の実装は [`host/devices/px4_device.cpp`](../host/devices/px4_device.cpp) を参照してください。
 カードを開くと、チューナーと共有する基板電源の利用数を増やしてから `it930x_bcas_init()` を実行します。  
 初期化に失敗した場合は、増やした電源利用数を必ず戻します。  
 
@@ -171,7 +171,7 @@ VID `0x0511` の PID `0x084a`、`0x024a`、`0x074a` では、シリアル番号�
 
 ### PXMLT 系
 
-Windows 側の実装は [`host/devices/pxmlt_device.cpp`](../winusb/src/DriverHost_PX4/pxmlt_device.cpp) を参照してください。  
+Windows 側の実装は [`host/devices/pxmlt_device.cpp`](../host/devices/pxmlt_device.cpp) を参照してください。
 PX-MLT8PE は、5チューナー側と3チューナー側が別の USB デバイスとして見えます。  
 コード上の `PXMLT8PE3` は3チューナー側を示し、カードリーダーを持つのは5チューナー側だけです。  
 
@@ -180,7 +180,7 @@ PX-MLT8PE は、5チューナー側と3チューナー側が別の USB デバイ
 
 ### ISDB2056 系
 
-Windows 側の実装は [`host/devices/isdb2056_device.cpp`](../winusb/src/DriverHost_PX4/isdb2056_device.cpp) を参照してください。  
+Windows 側の実装は [`host/devices/isdb2056_device.cpp`](../host/devices/isdb2056_device.cpp) を参照してください。
 ISDB2056 系は、同じ IT930x 上で TS と B-CAS UART の制御転送を実行します。  
 カード単体の APDU 試験に加え、受信中の APDU を必須試験にします。  
 
@@ -225,7 +225,7 @@ VID と PID だけからカードスロットの有無を推測せず、現在�
 ### ユーザー空間
 
 ユーザー空間には、pcsc-lite が読み込む IFD ハンドラーと、独立して試験できる T=1 プロトコル実装を追加します。  
-プロトコル実装は [`host/core/smart_card.cpp`](../winusb/src/DriverHost_PX4/smart_card.cpp) の状態遷移を移植し、Linux のファイル I/O を薄いアダプターとして接続します。  
+プロトコル実装は [`host/core/smart_card.cpp`](../host/core/smart_card.cpp) の状態遷移を移植し、Linux のファイル I/O を薄いアダプターとして接続します。
 
 IFD ハンドラーは次の処理を担当します。  
 

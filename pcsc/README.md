@@ -60,7 +60,7 @@ ioctl のコマンドの振り分けと `it930x_bcas_*()` の呼び出しは、�
 ### IFD ハンドラー側
 
 [`ifdhandler.cpp`](ifdhandler.cpp) は pcsc-lite の IFD ハンドラーの関数を実装し、[`linux_card_device.cpp`](linux_card_device.cpp) は ioctl を発行する薄いアダプターです。  
-T=1 の実装は、Windows 版の [`smart_card.cpp`](../winusb/src/DriverHost_PX4/smart_card.cpp) をそのままビルドして使います。
+T=1 の実装は、Windows 版と共有する [`smart_card.cpp`](../host/core/smart_card.cpp) をそのままビルドして使います。
 
 APDU の通信に失敗したときは、Windows 版と同じく T=1 のセッションだけを捨て、次の APDU の前にカードをリセットして復帰します。  
 pcscd は通信の失敗でカードをリセットしないため、ここでカードを閉じると、アプリケーションが明示的にリセットするまで通信できなくなります。  
@@ -134,7 +134,7 @@ pcscd を起動し直すと、ID の入った名前になります。
 ## ioctl の仕様
 
 定義は [`include/px4_card_ioctl.h`](../include/px4_card_ioctl.h) にあります。  
-各コマンドは Windows 版の `CardDevice` ([`card_device.hpp`](../winusb/src/DriverHost_PX4/card_device.hpp)) の関数と1対1に対応し、引数はそのコマンドに必要な型だけを受け渡します。  
+各コマンドは共有 `CardDevice` ([`card_device.hpp`](../host/core/card_device.hpp)) の関数と1対1に対応し、引数はそのコマンドに必要な型だけを受け渡します。
 マジック番号と書き方は、チューナーの ioctl ([`include/ptx_ioctl.h`](../include/ptx_ioctl.h)) と同じ 0x8d です。
 
 | コマンド | 引数 | 内容 |
