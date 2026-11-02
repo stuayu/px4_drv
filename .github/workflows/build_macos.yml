@@ -7,24 +7,30 @@ on:
     paths:
       - '.github/workflows/build_macos.yml'
       - 'driver/common/**'
+      - 'etc/it930x-firmware.bin'
       - 'host/**'
       - 'macos/**'
       - 'tests/**'
       - 'winusb/src/BonDriver_PX4/chset.*'
       - 'winusb/src/common/**'
       - 'winusb/tests/**'
+      - 'winusb/pkg/DriverHost_PX4/isdbt_rio.inp'
+      - 'winusb/pkg/DriverHost_PX4/LICENCE.siano'
   push:
     branches:
       - develop
     paths:
       - '.github/workflows/build_macos.yml'
       - 'driver/common/**'
+      - 'etc/it930x-firmware.bin'
       - 'host/**'
       - 'macos/**'
       - 'tests/**'
       - 'winusb/src/BonDriver_PX4/chset.*'
       - 'winusb/src/common/**'
       - 'winusb/tests/**'
+      - 'winusb/pkg/DriverHost_PX4/isdbt_rio.inp'
+      - 'winusb/pkg/DriverHost_PX4/LICENCE.siano'
   workflow_dispatch:
   # build_and_release.yml からタグのリリース時にも呼び出す
   workflow_call:
