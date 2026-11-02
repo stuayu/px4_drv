@@ -132,8 +132,10 @@ public:
 			}
 			const auto deadline = std::chrono::steady_clock::now() + timeout;
 			int ret = GetVersion(deadline);
-			if (ret)
+			if (ret) {
+				msg_err("Siano protocol: GET_VERSION failed (ret: %d)\n", ret);
 				return ret;
+			}
 
 			Version current = GetVersionSnapshot();
 			/* 起動済みの ISDB-T BDA モードへ INIT_DEVICE を重ねると HIF が止まるため、再投入しない。 */
@@ -291,7 +293,33 @@ public:
 	{
 		MessageFrame frame{};
 		const int ret = DecodeMessage(buffer, actual_length, response_alignment_, frame);
-		if (ret)
+		if (ret) {
+			if (buffer && actual_length >= kHeaderSize) {
+				const auto read_u16_at = [buffer](std::size_t offset) {
+					return static_cast<std::uint16_t>(
+						static_cast<std::uint16_t>(buffer[offset]) |
+						(static_cast<std::uint16_t>(buffer[offset + 1]) << 8));
+				};
+				const std::uint16_t flags = read_u16_at(6);
+				const std::size_t fragment_offset = (flags & 4) && response_alignment_
+					? response_alignment_ + ((flags >> 8) & 3) : 0;
+				const bool fragment_header_available = fragment_offset <= actual_length - kHeaderSize;
+				const std::uint16_t fragment_type = fragment_header_available
+					? read_u16_at(fragment_offset) : 0;
+				const std::uint16_t fragment_length = fragment_header_available
+					? read_u16_at(fragment_offset + 4) : 0;
+				const std::uint16_t fragment_flags = fragment_header_available
+					? read_u16_at(fragment_offset + 6) : 0;
+				msg_log_at(PX4_LOG_DEBUG, PX4_LOG_CAT_DEMOD,
+					   "Siano frame decode failed (ret=%d, actual=%zu, align=%zu, header=%u/%u/0x%04x, fragment_offset=%zu, fragment=%u/%u/0x%04x).\n",
+					   ret, actual_length, response_alignment_, read_u16_at(0),
+					   read_u16_at(4), flags, fragment_offset, fragment_type,
+					   fragment_length, fragment_flags);
+			}
+			/* smsusb は長さ不正のUSB応答を捨ててURBを再投入する。単発の短い読み出しで
+			 * RIO全体を切断状態にすると、次回のDriverHost起動まで復帰できない。 */
+			if (ret == -EMSGSIZE || ret == -EBADMSG || ret == -EOVERFLOW)
+				return 0;
 			return ret;
 		}
 		const std::uint8_t *payload = buffer + frame.payload_offset;

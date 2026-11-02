@@ -216,7 +216,7 @@ int main()
 	require(protocol.HandleTransfer(ts_message.data(), ts_message.size()) == 0);
 	require(ts_bytes == 188);
 	require(first_ts_byte == 0x47);
-	require(protocol.HandleTransfer(ts_message.data(), 7) == -EMSGSIZE);
+	require(protocol.HandleTransfer(ts_message.data(), 7) == 0);
 	{
 		std::array<std::uint8_t, 8> incomplete_version{};
 		put16(incomplete_version.data(), 669);
