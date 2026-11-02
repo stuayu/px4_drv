@@ -16,9 +16,13 @@ Windows requires the included WinUSB INF to be installed for `3275:0080`. The of
 
 The Windows/macOS host expects `isdbt_rio.inp` next to DriverHost_PX4, unless `SianoFirmware` in `DriverHost_PX4.ini` names another path. Linux asks the kernel firmware loader for the same filename, normally from `/lib/firmware`. The bundled binary matches the copy in the upstream Linux firmware repository (SHA-256 `054520642d5d09cb7ab7d08dbd6fd9ba9365de56adf2e7d7d06927f9845ff818`). Its redistribution terms are included in `LICENCE.siano`.
 
+## Signal reporting
+
+On Windows and macOS, `BonDriver_PX4::GetSignalLevel()` reports Siano's demodulator SNR as C/N in dB. `GET_STATISTICS_EX_RES` begins with a 32-bit `request_result`, followed by `sms_isdbt_stats_ex`; `is_demod_locked` is at offset 12 and signed `SNR` (integer dB) at offset 20 within that structure. The host converts SNR to millidecibels by multiplying by 1000, then the existing BonDriver interface converts it back to dB. This is not calibrated RF input power in dBm. The Linux upstream Siano DVB frontend uses the same SNR field and publishes it in millidecibels.
+
 ## Verification status
 
-The portable protocol codec has automated tests. The Linux kernel module has not yet been built against Linux kernel headers in this macOS workspace, and Linux Siano reception has not been tested on hardware. The macOS DriverHost builds with the Siano backend. The new Windows INF is present; Windows catalog verification has passed in a remote staging tree, but the Windows build could not proceed because that host lacks the repository's required v143 toolset. Long-run capture, hotplug, TS continuity under concurrent Q1UD reception, and driver ownership switching still require hardware verification. Until those checks pass, PX-S1UD V2.0 and PX-Q1UD remain experimental.
+The portable protocol codec has automated tests. The macOS DriverHost builds with the Siano backend and CTest passes. The Windows v145 x86/x64 `build.ps1` and hardware-independent tests pass. On Windows hardware, 60-second captures on 13ch, 15ch, and 22ch had zero CC, TEI, and sync errors and average bitrates within 0.2% of the official BDA driver. In a four-function concurrent run, all four channels (13ch, 15ch, 22ch, 28ch) produced TS. A separate function-level check found that USB function `&0&1` fails to produce `BDA_DATA` on 28ch under WinUSB although the official BDA driver receives 28ch on that function; the other three WinUSB functions received 28ch. The WinUSB host now reports a tune failure when no TS data arrives, and this function-specific reception gap remains unresolved. Linux Siano reception, 30-minute captures, hotplug, and driver ownership switching still require hardware verification. Until the remaining checks pass, PX-S1UD V2.0 and PX-Q1UD remain experimental.
 
 ## References
 
@@ -26,6 +30,8 @@ The portable protocol codec has automated tests. The Linux kernel module has not
 - [PLEX PX-Q1UD specifications](https://plex-net.co.jp/item/tv-tuner/px-q1ud/)
 - [PLEX driver downloads](https://plex-net.co.jp/download/)
 - [Linux upstream Siano USB driver](https://github.com/torvalds/linux/blob/master/drivers/media/usb/siano/smsusb.c)
+- [Linux upstream Siano DVB statistics](https://github.com/torvalds/linux/blob/master/drivers/media/common/siano/smsdvb-main.c#L2880-L2932)
+- [Siano extended statistics structure](https://github.com/torvalds/linux/blob/master/drivers/media/common/siano/smscoreapi.h#L3468-L3479)
 - [Linux upstream Siano firmware names](https://codebrowser.dev/linux/linux/drivers/media/common/siano/smscoreapi.h.html)
 - [Upstream `isdbt_rio.inp`](https://kernel.googlesource.com/pub/scm/linux/kernel/git/firmware/linux-firmware/+/refs/heads/main/isdbt_rio.inp)
 - [GPL Siano RIO userspace reference implementation](https://github.com/Khronos31/siano-userland)

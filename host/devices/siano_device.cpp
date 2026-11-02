@@ -60,6 +60,9 @@ SianoDevice::SianoDevice(const std::wstring &path, const DeviceDefinition &defin
 			 std::uintptr_t index, ReceiverManager &receiver_manager)
 	: DeviceBase(path, definition, index, receiver_manager)
 {
+	msg_log_at(PX4_LOG_DEBUG, PX4_LOG_CAT_SERVER,
+		   "Siano RIO registration: host_index=%s path=%ls\n", dev_.device_name,
+		   path.c_str());
 	if (definition.receivers.size() != 1 || definition.receivers[0].index != 0 ||
 	    definition.receivers[0].systems != SystemType::ISDB_T)
 		throw DeviceError("Siano RIO requires exactly one ISDB-T receiver.");
@@ -279,16 +282,20 @@ int SianoDevice::EnsureProtocolInitialized(std::chrono::milliseconds timeout)
 	if (timeout <= std::chrono::milliseconds::zero())
 		return -ETIMEDOUT;
 	int ret = StartUsbStream();
-	if (ret)
+	if (ret) {
+		msg_err("Siano RIO: StartUsbStream during initialization failed (ret: %d)\n", ret);
 		return ret;
+	}
 	/* Firmware transfer runs after receiver registration, outside the global device-list lock. */
 	ret = protocol_->Initialize(firmware_path_, timeout);
 	if (ret) {
+		msg_err("Siano RIO: protocol initialization failed (ret: %d)\n", ret);
 		StopUsbStream();
 		if (ret != -ENOENT && ret != -EACCES)
 			protocol_->Disconnect();
 		return ret;
 	}
+	msg_dbg("Siano RIO: protocol initialization succeeded\n");
 	protocol_initialized_ = true;
 	return 0;
 }
@@ -312,6 +319,7 @@ int SianoDevice::StreamHandler(void *context, void *data, std::uint32_t size)
 {
 	auto &device = *static_cast<SianoDevice *>(context);
 	if (!data) {
+		msg_err("Siano RIO: USB stream ended unexpectedly; disconnecting protocol.\n");
 		device.stream_failed_ = true;
 		if (device.protocol_)
 			device.protocol_->Disconnect();
@@ -328,6 +336,7 @@ int SianoDevice::StreamHandler(void *context, void *data, std::uint32_t size)
 	const int ret = device.protocol_->HandleTransfer(
 		static_cast<const std::uint8_t *>(data), size);
 	if (ret) {
+		msg_err("Siano RIO: message decode failed (ret: %d, size: %u).\n", ret, size);
 		device.stream_failed_ = true;
 		device.protocol_->Disconnect();
 		if (device.buffer_)
@@ -350,6 +359,8 @@ int SianoDevice::Receiver::Open()
 	if (parent_.receiver_open_)
 		return -EALREADY;
 	parent_.receiver_open_ = true;
+	msg_log_at(PX4_LOG_DEBUG, PX4_LOG_CAT_SERVER,
+		   "Siano receiver Open: host_index=%s\n", parent_.dev_.device_name);
 	return 0;
 }
 
@@ -463,8 +474,14 @@ bool SianoDevice::Receiver::TuneOverride(std::uint32_t timeout, bool &result)
 		return true;
 	}
 	const auto remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds>(remaining).count();
+	msg_log_at(PX4_LOG_DEBUG, PX4_LOG_CAT_TUNER,
+		   "Siano tune start: host_index=%s freq_khz=%u\n",
+		   parent_.dev_.device_name, static_cast<unsigned int>(params_.freq));
 	ret = parent_.protocol_->TuneFrequencyHz(static_cast<std::uint32_t>(frequency_hz),
 						 std::chrono::milliseconds((std::max<std::int64_t>)(1, remaining_ms)));
+	msg_log_at(PX4_LOG_DEBUG, PX4_LOG_CAT_TUNER,
+		   "Siano tune result: host_index=%s freq_khz=%u ret=%d\n",
+		   parent_.dev_.device_name, static_cast<unsigned int>(params_.freq), ret);
 	result = ret == 0;
 	if (result && was_capturing) {
 		parent_.capture_enabled_ = true;

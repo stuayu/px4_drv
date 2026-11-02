@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -62,7 +63,11 @@ public:
 	std::uint16_t firmware_version = 0x0800;
 	unsigned int firmware_chunks = 0;
 	unsigned int pid_filter_requests = 0;
+	unsigned int statistics_requests = 0;
 	bool stale_lock_before_tune_response = false;
+	bool signal_detected_without_statistics = false;
+	bool send_ts_after_pid_filter = true;
+	bool rf_locked = false;
 	bool demod_locked = true;
 	bool external_lna_on = false;
 
@@ -96,11 +101,19 @@ public:
 			return protocol->HandleTransfer(tune_reply.data(), tune_reply.size());
 		}
 		if (type == 653) { // GET_STATISTICS_EX
-			std::array<std::uint8_t, 32> stats{};
-			put32(stats.data() + 12, demod_locked && !stale_lock_before_tune_response ? 1 : 0);
-			put32(stats.data() + 16, external_lna_on ? 1 : 0);
-			put32(stats.data() + 20, 13); // SNR: 13 dB
-			put32(stats.data() + 24, static_cast<std::uint32_t>(-74)); // RSSI: -74 dBm
+			++statistics_requests;
+			if (signal_detected_without_statistics) {
+				auto signal = response(827);
+				return protocol->HandleTransfer(signal.data(), signal.size());
+			}
+			/* GET_STATISTICS_EX_RES は request_result の4 byte後に stats_ex を返す。 */
+			std::array<std::uint8_t, 36> stats{};
+			put32(stats.data(), 0); // sms_msg_statistics_info::request_result
+			put32(stats.data() + 12, rf_locked ? 1 : 0);
+			put32(stats.data() + 16, demod_locked && !stale_lock_before_tune_response ? 1 : 0);
+			put32(stats.data() + 20, external_lna_on ? 1 : 0);
+			put32(stats.data() + 24, 13); // SNR: 13 dB
+			put32(stats.data() + 28, static_cast<std::uint32_t>(-74)); // RSSI: -74 dBm
 			auto stats_reply = response(654, stats.data(), stats.size());
 			return protocol->HandleTransfer(stats_reply.data(), stats_reply.size());
 		}
@@ -113,6 +126,12 @@ public:
 		}
 		if (type == 601) { // ADD_PID_FILTER_REQ
 			++pid_filter_requests;
+			if (send_ts_after_pid_filter) {
+				std::array<std::uint8_t, 188> ts{};
+				ts[0] = 0x47;
+				auto data = response(693, ts.data(), ts.size());
+				return protocol->HandleTransfer(data.data(), data.size());
+			}
 			return 0;
 		}
 		if (type == 660) { // firmware chunk
@@ -158,6 +177,11 @@ int main()
 	std::int32_t cnr_millidb = 0;
 	require(protocol.ReadCnrMilliDb(cnr_millidb) == 0);
 	require(cnr_millidb == 13000);
+	const unsigned int requests_before_refresh = transport.statistics_requests;
+	std::this_thread::sleep_for(std::chrono::milliseconds(120));
+	require(protocol.ReadCnrMilliDb(cnr_millidb) == 0);
+	require(cnr_millidb == 13000);
+	require(transport.statistics_requests > requests_before_refresh);
 
 	{
 		FakeTransport legacy_transport;
@@ -229,6 +253,7 @@ int main()
 
 	{
 		FakeTransport unlocked_transport;
+		unlocked_transport.rf_locked = true;
 		unlocked_transport.demod_locked = false;
 		unlocked_transport.external_lna_on = true;
 		px4::siano::Protocol unlocked_protocol(unlocked_transport, 0, {});
@@ -238,5 +263,43 @@ int main()
 		require(unlocked_protocol.TuneFrequencyHz(557142857U,
 								 std::chrono::milliseconds(250)) == -ETIMEDOUT);
 		require(!unlocked_protocol.IsLocked());
+	}
+
+	{
+		FakeTransport signal_only_transport;
+		signal_only_transport.signal_detected_without_statistics = true;
+		px4::siano::Protocol signal_only_protocol(signal_only_transport, 0, {});
+		signal_only_transport.protocol = &signal_only_protocol;
+		require(signal_only_protocol.Initialize(std::filesystem::path("unused-firmware.inp"),
+							    std::chrono::milliseconds(100)) == 0);
+		require(signal_only_protocol.TuneFrequencyHz(557142857U,
+								 std::chrono::milliseconds(1000)) == -ETIMEDOUT);
+		require(!signal_only_protocol.IsLocked());
+		require(signal_only_transport.pid_filter_requests == 0);
+	}
+
+	{
+		FakeTransport no_ts_transport;
+		no_ts_transport.send_ts_after_pid_filter = false;
+		px4::siano::Protocol no_ts_protocol(no_ts_transport, 0, {});
+		no_ts_transport.protocol = &no_ts_protocol;
+		require(no_ts_protocol.Initialize(std::filesystem::path("unused-firmware.inp"),
+							 std::chrono::milliseconds(100)) == 0);
+		require(no_ts_protocol.TuneFrequencyHz(557142857U,
+								 std::chrono::milliseconds(250)) == -ETIMEDOUT);
+		require(no_ts_transport.pid_filter_requests == 1);
+	}
+
+	{
+		FakeTransport stale_ts_transport;
+		px4::siano::Protocol stale_ts_protocol(stale_ts_transport, 0, {});
+		stale_ts_transport.protocol = &stale_ts_protocol;
+		require(stale_ts_protocol.Initialize(std::filesystem::path("unused-firmware.inp"),
+							      std::chrono::milliseconds(100)) == 0);
+		require(stale_ts_protocol.TuneFrequencyHz(557142857U,
+								    std::chrono::milliseconds(250)) == 0);
+		stale_ts_transport.send_ts_after_pid_filter = false;
+		require(stale_ts_protocol.TuneFrequencyHz(563142857U,
+								    std::chrono::milliseconds(250)) == -ETIMEDOUT);
 	}
 }

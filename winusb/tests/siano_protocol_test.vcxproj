@@ -44,6 +44,8 @@
     <ClCompile Include="siano_protocol_test.cpp" />
     <ClCompile Include="..\..\host\devices\siano_protocol.cpp" />
     <ClCompile Include="..\..\host\devices\siano_wire.cpp" />
+    <ClCompile Include="..\..\host\common\msg_log.c" />
+    <ClCompile Include="..\src\common\msg.c" />
     <ClCompile Include="..\..\driver\common\bridge\siano_wire_core.c" />
   </ItemGroup>
   <ItemGroup>

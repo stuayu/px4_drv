@@ -32,7 +32,7 @@ public:
 	int HandleTransfer(const std::uint8_t *buffer,
 			   std::size_t actual_length) noexcept;
 	bool IsLocked() const noexcept;
-	int ReadCnrMilliDb(std::int32_t &value) const noexcept;
+	int ReadCnrMilliDb(std::int32_t &value) noexcept;
 	void Disconnect() noexcept;
 
 private:

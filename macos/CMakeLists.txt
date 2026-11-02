@@ -282,6 +282,8 @@ if(BUILD_TESTING)
         "${WINUSB_SRC}/../tests/siano_protocol_test.cpp"
         "${HOST_SRC}/devices/siano_protocol.cpp"
         "${HOST_SRC}/devices/siano_wire.cpp"
+        "${HOST_SRC}/common/msg_log.c"
+        "${MACOS_SRC}/common/msg.c"
         "${DRIVER_DIR}/common/bridge/siano_wire_core.c")
     add_test(NAME siano_protocol_test COMMAND siano_protocol_test)
 
