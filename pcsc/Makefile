@@ -4,8 +4,9 @@ PCSC_CFLAGS ?= $(shell $(PKG_CONFIG) --cflags libpcsclite)
 USBDROPDIR ?= $(shell $(PKG_CONFIG) --variable=usbdropdir libpcsclite)
 BUILD ?= build
 ROOT := ..
-SHARED := $(ROOT)/winusb/src/DriverHost_PX4
-CPPFLAGS += -I$(ROOT)/include -I$(ROOT)/driver -I$(SHARED) $(PCSC_CFLAGS)
+# WinUSB 版・macOS 版と共有するカードの状態管理 (smart_card.cpp) は host/core にある
+SHARED := $(ROOT)/host/core
+CPPFLAGS += -I$(ROOT)/include -I$(SHARED) $(PCSC_CFLAGS)
 CPPFLAGS += -I.
 CXXFLAGS ?= -O2 -g
 CXXFLAGS += -std=c++17 -Wall -Wextra -Wpedantic -pthread
