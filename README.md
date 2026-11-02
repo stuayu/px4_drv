@@ -685,6 +685,8 @@ macOS 版は、ユーザー空間デーモン `DriverHost_PX4` として動作�
 
 ### 2. ソースコードの取得とビルド
 
+リリースには、Apple Silicon 用 (`px4_drv_macos_arm64.tar.gz`) と Intel Mac 用 (`px4_drv_macos_x86_64.tar.gz`) のビルド済みアーカイブも添付されます。アーカイブの実行ファイルは Homebrew の libusb を利用するため、使う場合も `brew install libusb` が必要です。ソースからビルドする場合は次の手順に従ってください。
+
 	$ git clone https://github.com/stuayu/px4_drv.git
 	$ cd px4_drv
 	$ cmake -S macos -B macos/build -DCMAKE_BUILD_TYPE=Release

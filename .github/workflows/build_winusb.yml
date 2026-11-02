@@ -7,6 +7,8 @@ on:
     paths:
       - '.github/workflows/build_winusb.yml'
       - 'driver/**'
+      - 'host/**'
+      - 'include/**'
       - 'winusb/**'
   push:
     branches:
@@ -14,6 +16,8 @@ on:
     paths:
       - '.github/workflows/build_winusb.yml'
       - 'driver/**'
+      - 'host/**'
+      - 'include/**'
       - 'winusb/**'
   workflow_dispatch:
 
@@ -174,6 +178,72 @@ jobs:
                       'BonDriver_PX-S1UR.ini',
                       'BonDriver_PX4-T.ChSet.txt'
                   )
+              },
+              @{
+                  Directory = 'dist/BonDriver_PX-S1UD_32bit'
+                  Files = @(
+                      'BonDriver_PX-S1UD.dll',
+                      'BonDriver_PX-S1UD.ini',
+                      'BonDriver_PX4-T.ChSet.txt',
+                      'isdbt_rio.inp',
+                      'LICENCE.siano'
+                  )
+                  # 内蔵カードリーダーがないため WinSCard.dll は同梱しない
+                  Common = @('DriverHost_PX4.exe', 'DriverHost_PX4.ini', 'it930x-firmware.bin')
+              },
+              @{
+                  Directory = 'dist/BonDriver_PX-Q1UD_32bit'
+                  Files = @(
+                      'BonDriver_PX-Q1UD.dll',
+                      'BonDriver_PX-Q1UD.ini',
+                      'BonDriver_PX4-T.ChSet.txt',
+                      'isdbt_rio.inp',
+                      'LICENCE.siano'
+                  )
+                  Common = @('DriverHost_PX4.exe', 'DriverHost_PX4.ini', 'it930x-firmware.bin')
+              },
+              @{
+                  Directory = 'dist/BonDriver_T230C_32bit'
+                  Files = @(
+                      'BonDriver_T230C.dll',
+                      'BonDriver_T230C.ini',
+                      'BonDriver_T230C-C.ChSet.txt'
+                  )
+                  # IT930x を使わないため it930x-firmware.bin は同梱しない (Si2168 / Si2141 のファームウェアは利用者が配置する)
+                  Common = @('DriverHost_PX4.exe', 'DriverHost_PX4.ini', 'WinSCard.dll')
+              },
+              @{
+                  Directory = 'dist/BonDriver_PX-S1UD_64bit'
+                  Files = @(
+                      'BonDriver_PX-S1UD.dll',
+                      'BonDriver_PX-S1UD.ini',
+                      'BonDriver_PX4-T.ChSet.txt',
+                      'isdbt_rio.inp',
+                      'LICENCE.siano'
+                  )
+                  # 内蔵カードリーダーがないため WinSCard.dll は同梱しない
+                  Common = @('DriverHost_PX4.exe', 'DriverHost_PX4.ini', 'it930x-firmware.bin')
+              },
+              @{
+                  Directory = 'dist/BonDriver_PX-Q1UD_64bit'
+                  Files = @(
+                      'BonDriver_PX-Q1UD.dll',
+                      'BonDriver_PX-Q1UD.ini',
+                      'BonDriver_PX4-T.ChSet.txt',
+                      'isdbt_rio.inp',
+                      'LICENCE.siano'
+                  )
+                  Common = @('DriverHost_PX4.exe', 'DriverHost_PX4.ini', 'it930x-firmware.bin')
+              },
+              @{
+                  Directory = 'dist/BonDriver_T230C_64bit'
+                  Files = @(
+                      'BonDriver_T230C.dll',
+                      'BonDriver_T230C.ini',
+                      'BonDriver_T230C-C.ChSet.txt'
+                  )
+                  # IT930x を使わないため it930x-firmware.bin は同梱しない (Si2168 / Si2141 のファームウェアは利用者が配置する)
+                  Common = @('DriverHost_PX4.exe', 'DriverHost_PX4.ini', 'WinSCard.dll')
               }
           )
 
@@ -191,7 +261,8 @@ jobs:
                   throw "Distribution directory was not found: $distribution_directory"
               }
 
-              $artifact_file_names = $distribution_check.Files + $common_distribution_file_names
+              $common_file_names = if ($distribution_check.ContainsKey('Common')) { $distribution_check.Common } else { $common_distribution_file_names }
+              $artifact_file_names = $distribution_check.Files + $common_file_names
               foreach ($artifact_file_name in $artifact_file_names) {
                   $artifact_file_path = Join-Path $distribution_directory $artifact_file_name
 

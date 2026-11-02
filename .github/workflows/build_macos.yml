@@ -1,0 +1,90 @@
+name: Build and Check macOS Package
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - '.github/workflows/build_macos.yml'
+      - 'driver/common/**'
+      - 'host/**'
+      - 'macos/**'
+      - 'tests/**'
+      - 'winusb/src/BonDriver_PX4/chset.*'
+      - 'winusb/src/common/**'
+      - 'winusb/tests/**'
+  push:
+    branches:
+      - develop
+    paths:
+      - '.github/workflows/build_macos.yml'
+      - 'driver/common/**'
+      - 'host/**'
+      - 'macos/**'
+      - 'tests/**'
+      - 'winusb/src/BonDriver_PX4/chset.*'
+      - 'winusb/src/common/**'
+      - 'winusb/tests/**'
+  workflow_dispatch:
+  # build_and_release.yml からタグのリリース時にも呼び出す
+  workflow_call:
+
+jobs:
+  build:
+    name: Build and Check macOS Package (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x86_64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install build dependencies
+        run: brew install cmake libusb pkgconf
+
+      - name: Configure
+        run: cmake -S macos -B macos/build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build macos/build --parallel "$(sysctl -n hw.ncpu)"
+
+      # USB デバイスを使わない試験だけを登録しているため、チューナーのない runner でも全件を実行する
+      - name: Test
+        run: ctest --test-dir macos/build --output-on-failure
+
+      - name: Check artifacts
+        run: |
+          for file in DriverHost_PX4 px4rec DriverHost_PX4.ini; do
+            test -f "macos/build/$file"
+            echo "Artifact exists: macos/build/$file"
+          done
+          for file in DriverHost_PX4 px4rec; do
+            archs="$(lipo -archs "macos/build/$file")"
+            echo "$file: $archs"
+            test "$archs" = "${{ matrix.arch }}"
+          done
+
+      # 実行ファイルは Homebrew の libusb を動的にリンクするため、利用する Mac にも libusb が必要
+      - name: Package
+        run: |
+          mkdir -p dist/px4_drv_macos_${{ matrix.arch }}
+          cp macos/build/DriverHost_PX4 macos/build/px4rec macos/build/DriverHost_PX4.ini dist/px4_drv_macos_${{ matrix.arch }}/
+          tar -C dist -czf dist/px4_drv_macos_${{ matrix.arch }}.tar.gz px4_drv_macos_${{ matrix.arch }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: px4_drv_macos_${{ matrix.arch }}
+          path: dist/px4_drv_macos_${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
