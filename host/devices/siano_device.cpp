@@ -53,7 +53,6 @@ protected:
 
 private:
 	SianoDevice &parent_;
-	bool buffer_started_ = false;
 };
 
 SianoDevice::SianoDevice(const std::wstring &path, const DeviceDefinition &definition,
@@ -186,7 +185,7 @@ int SianoDevice::Init()
 	transport_.reset(new BusTransport(*this));
 	protocol_.reset(new siano::Protocol(*transport_, response_alignment_,
 		[this](const std::uint8_t *data, std::size_t size) {
-			if (!capture_enabled_ || !buffer_)
+			if (!capture_state_.IsEnabled() || !buffer_)
 				return;
 			std::size_t output_size = size;
 			if (buffer_->Write(data, output_size))
@@ -394,10 +393,10 @@ int SianoDevice::Receiver::SetCapture(bool capture)
 {
 	std::lock_guard<std::recursive_mutex> lock(parent_.mutex_);
 	if (!capture) {
-		parent_.capture_enabled_ = false;
-		if (buffer_started_) {
+		const bool buffer_started = parent_.capture_state_.IsBufferStarted();
+		parent_.capture_state_.StopBuffer();
+		if (buffer_started) {
 			stream_buf_->Stop();
-			buffer_started_ = false;
 		}
 		return parent_.StopUsbStream();
 	}
@@ -406,22 +405,21 @@ int SianoDevice::Receiver::SetCapture(bool capture)
 	int ret = parent_.EnsureProtocolInitialized();
 	if (ret)
 		return ret;
-	if (!buffer_started_) {
+	if (!parent_.capture_state_.IsBufferStarted()) {
 		if (!stream_buf_->Alloc(188U * parent_.receiver_packets_)) {
 			parent_.StopUsbStream();
 			return -ENOMEM;
 		}
 		stream_buf_->Start();
-		buffer_started_ = true;
+		parent_.capture_state_.StartBuffer();
 	}
 	ret = parent_.StartUsbStream();
 	if (ret) {
-		parent_.capture_enabled_ = false;
 		stream_buf_->Stop();
-		buffer_started_ = false;
+		parent_.capture_state_.StopBuffer();
 		return ret;
 	}
-	parent_.capture_enabled_ = true;
+	parent_.capture_state_.EnableCapture();
 	return 0;
 }
 
@@ -459,10 +457,9 @@ bool SianoDevice::Receiver::TuneOverride(std::uint32_t timeout, bool &result)
 	if (ret)
 		return true;
 	/* 直前チャンネルの転送が選局後へ混ざらないよう、選局中は TS を破棄する。 */
-	const bool was_capturing = parent_.capture_enabled_;
-	parent_.capture_enabled_ = false;
-	if (buffer_started_ && !stream_buf_->Purge(deadline)) {
-		parent_.capture_enabled_ = was_capturing;
+	const bool was_capturing = parent_.capture_state_.PauseForTune();
+	if (parent_.capture_state_.IsBufferStarted() && !stream_buf_->Purge(deadline)) {
+		parent_.capture_state_.RestoreAfterTunePreparation(was_capturing);
 		return true;
 	}
 	ret = parent_.StartUsbStream();
@@ -470,7 +467,7 @@ bool SianoDevice::Receiver::TuneOverride(std::uint32_t timeout, bool &result)
 		return true;
 	const auto remaining = deadline - std::chrono::steady_clock::now();
 	if (remaining <= std::chrono::steady_clock::duration::zero()) {
-		parent_.capture_enabled_ = was_capturing;
+		parent_.capture_state_.RestoreAfterTunePreparation(was_capturing);
 		return true;
 	}
 	const auto remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds>(remaining).count();
@@ -483,12 +480,9 @@ bool SianoDevice::Receiver::TuneOverride(std::uint32_t timeout, bool &result)
 		   "Siano tune result: host_index=%s freq_khz=%u ret=%d\n",
 		   parent_.dev_.device_name, static_cast<unsigned int>(params_.freq), ret);
 	result = ret == 0;
-	if (result && was_capturing) {
-		parent_.capture_enabled_ = true;
-	} else {
-		parent_.capture_enabled_ = false;
+	parent_.capture_state_.FinishTune(result);
+	if (!result)
 		parent_.StopUsbStream();
-	}
 	return true;
 }
 

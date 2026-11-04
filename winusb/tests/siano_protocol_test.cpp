@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "siano_protocol.hpp"
+#include "../../host/devices/siano_capture_state.hpp"
 
 #include <algorithm>
 #include <array>
@@ -301,5 +302,20 @@ int main()
 		stale_ts_transport.send_ts_after_pid_filter = false;
 		require(stale_ts_protocol.TuneFrequencyHz(563142857U,
 								    std::chrono::milliseconds(250)) == -ETIMEDOUT);
+	}
+
+	{
+		px4::siano::CaptureState capture;
+		capture.StartBuffer();
+		capture.EnableCapture();
+		require(capture.IsBufferStarted());
+		require(capture.IsEnabled());
+		require(capture.PauseForTune());
+		capture.FinishTune(false);
+		require(capture.IsBufferStarted());
+		require(!capture.IsEnabled());
+		require(!capture.PauseForTune());
+		capture.FinishTune(true);
+		require(capture.IsEnabled());
 	}
 }
