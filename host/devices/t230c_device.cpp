@@ -254,7 +254,7 @@ int T230CDevice::Init()
 		 static_cast<unsigned long long>(resync_stats.ep82_bytes),
 		 static_cast<unsigned int>(resync_stats.ep82_limit_reached));
 	const auto &config = device_def_.configs;
-	xfer_packets_ = util::wtoui(config.Get(L"XferPackets", L"816"));
+	xfer_packets_ = util::wtoui(config.Get(L"XferPackets", L"22"));
 	max_urbs_ = util::wtoui(config.Get(L"MaxUrbs", L"8"));
 	receiver_packets_ = util::wtoui(config.Get(L"ReceiverMaxPackets", L"16384"));
 	experimental_isdbc_ = util::wtob(config.Get(L"ExperimentalISDBC", L"false"));

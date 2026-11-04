@@ -54,7 +54,7 @@ private:
 	itedtv_bus stream_bus_ = {};
 	t230c::Deadline deadline_ = (t230c::Deadline::max)();
 	t230c::Bytes demod_fw_;
-	unsigned int xfer_packets_ = 816;
+	unsigned int xfer_packets_ = 22;
 	unsigned int max_urbs_ = 8;
 	unsigned int receiver_packets_ = 16384;
 	std::uint64_t stats_report_ms_ = 0;

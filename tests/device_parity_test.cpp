@@ -32,6 +32,7 @@ struct Device {
 	std::string type;
 	std::string interface_guid;
 	unsigned vid = 0, pid = 0;
+	unsigned xfer_packets = 0;
 	std::set<std::string> systems;
 	bool operator<(const Device &o) const
 	{
@@ -85,6 +86,8 @@ std::vector<Device> LoadIni(const std::string &path)
 			d.vid = std::stoul(value, nullptr, 0);
 		else if (section == def + ".Config" && key == "ProductId")
 			d.pid = std::stoul(value, nullptr, 0);
+		else if (section == def + ".Config" && key == "XferPackets")
+			d.xfer_packets = std::stoul(value, nullptr, 0);
 		else if (section.find(".Receiver") != std::string::npos && key == "System") {
 			std::stringstream ss(value);
 			std::string sys;
@@ -150,6 +153,25 @@ int main()
 			std::fprintf(stderr, "device factory does not know Type=%s\n", d.type.c_str());
 			ok = false;
 		}
+	for (const auto &[os_name, devices] : {
+		std::pair<const char *, const std::vector<Device> *>{"macOS", &mac},
+		std::pair<const char *, const std::vector<Device> *>{"WinUSB", &win}}) {
+		bool found_t230c = false;
+		for (const auto &d : *devices) {
+			if (d.type != "T230C")
+				continue;
+			found_t230c = true;
+			if (d.xfer_packets != 22) {
+				std::fprintf(stderr, "%s T230C XferPackets=%u, expected 22\n",
+					os_name, d.xfer_packets);
+				ok = false;
+			}
+		}
+		if (!found_t230c) {
+			std::fprintf(stderr, "%s INI lacks T230C transfer configuration\n", os_name);
+			ok = false;
+		}
+	}
 
 	/*
 	 * Linux 版の未対応機種。ここに無い差は失敗にする。
