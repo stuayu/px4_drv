@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "siano_protocol.hpp"
+#include "../../host/devices/siano_capture_state.hpp"
 
 #include <algorithm>
 #include <array>
@@ -10,6 +11,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <thread>
 #include <vector>
 
@@ -218,6 +220,24 @@ int main()
 	require(first_ts_byte == 0x47);
 	require(protocol.HandleTransfer(ts_message.data(), 7) == 0);
 	{
+		std::array<std::uint8_t, 8> invalid_header{};
+		put16(invalid_header.data(), 669);
+		put16(invalid_header.data() + 4, 7);
+		FakeTransport invalid_transport;
+		px4::siano::Protocol invalid_protocol(invalid_transport, 0, {});
+		require(invalid_protocol.HandleTransfer(invalid_header.data(), invalid_header.size()) == -EBADMSG);
+	}
+	{
+		std::array<std::uint8_t, 8> overflow_header{};
+		put16(overflow_header.data(), 669);
+		put16(overflow_header.data() + 4, 8);
+		put16(overflow_header.data() + 6, 0x0104);
+		FakeTransport overflow_transport;
+		px4::siano::Protocol overflow_protocol(overflow_transport,
+			(std::numeric_limits<std::size_t>::max)(), {});
+		require(overflow_protocol.HandleTransfer(overflow_header.data(), overflow_header.size()) == -EOVERFLOW);
+	}
+	{
 		std::array<std::uint8_t, 8> incomplete_version{};
 		put16(incomplete_version.data(), 669);
 		put16(incomplete_version.data() + 4, 8);
@@ -301,5 +321,20 @@ int main()
 		stale_ts_transport.send_ts_after_pid_filter = false;
 		require(stale_ts_protocol.TuneFrequencyHz(563142857U,
 								    std::chrono::milliseconds(250)) == -ETIMEDOUT);
+	}
+
+	{
+		px4::siano::CaptureState capture;
+		capture.StartBuffer();
+		capture.EnableCapture();
+		require(capture.IsBufferStarted());
+		require(capture.IsEnabled());
+		require(capture.PauseForTune());
+		capture.FinishTune(false);
+		require(capture.IsBufferStarted());
+		require(!capture.IsEnabled());
+		require(!capture.PauseForTune());
+		capture.FinishTune(true);
+		require(capture.IsEnabled());
 	}
 }

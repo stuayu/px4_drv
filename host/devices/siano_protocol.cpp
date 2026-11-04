@@ -316,9 +316,9 @@ public:
 					   read_u16_at(4), flags, fragment_offset, fragment_type,
 					   fragment_length, fragment_flags);
 			}
-			/* smsusb は長さ不正のUSB応答を捨ててURBを再投入する。単発の短い読み出しで
-			 * RIO全体を切断状態にすると、次回のDriverHost起動まで復帰できない。 */
-			if (ret == -EMSGSIZE || ret == -EBADMSG || ret == -EOVERFLOW)
+			/* 実長不足はsmsusbと同様にこの転送だけを捨てる。宣言長不正や
+			 * オフセット計算のoverflowは形式破損なので上位へ失敗を伝える。 */
+			if (ret == -EMSGSIZE)
 				return 0;
 			return ret;
 		}

@@ -10,6 +10,7 @@
 
 #include "device_base.hpp"
 #include "itedtv_bus.h"
+#include "siano_capture_state.hpp"
 #include "siano_protocol.hpp"
 
 namespace px4 {
@@ -57,7 +58,7 @@ private:
 	bool streaming_ = false;
 	bool protocol_initialized_ = false;
 	bool receiver_open_ = false;
-	std::atomic_bool capture_enabled_{false};
+	siano::CaptureState capture_state_;
 };
 
 } // namespace px4
