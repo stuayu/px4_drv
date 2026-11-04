@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <thread>
 #include <vector>
 
@@ -218,6 +219,24 @@ int main()
 	require(ts_bytes == 188);
 	require(first_ts_byte == 0x47);
 	require(protocol.HandleTransfer(ts_message.data(), 7) == 0);
+	{
+		std::array<std::uint8_t, 8> invalid_header{};
+		put16(invalid_header.data(), 669);
+		put16(invalid_header.data() + 4, 7);
+		FakeTransport invalid_transport;
+		px4::siano::Protocol invalid_protocol(invalid_transport, 0, {});
+		require(invalid_protocol.HandleTransfer(invalid_header.data(), invalid_header.size()) == -EBADMSG);
+	}
+	{
+		std::array<std::uint8_t, 8> overflow_header{};
+		put16(overflow_header.data(), 669);
+		put16(overflow_header.data() + 4, 8);
+		put16(overflow_header.data() + 6, 0x0104);
+		FakeTransport overflow_transport;
+		px4::siano::Protocol overflow_protocol(overflow_transport,
+			(std::numeric_limits<std::size_t>::max)(), {});
+		require(overflow_protocol.HandleTransfer(overflow_header.data(), overflow_header.size()) == -EOVERFLOW);
+	}
 	{
 		std::array<std::uint8_t, 8> incomplete_version{};
 		put16(incomplete_version.data(), 669);
