@@ -11,6 +11,7 @@
 struct usb_mock {
 	t230c_u8 out[64];
 	size_t out_size;
+	unsigned int out_calls;
 	t230c_u8 response[64];
 	size_t response_size;
 	t230c_u8 endpoint;
@@ -18,6 +19,16 @@ struct usb_mock {
 	t230c_u64 now_ms;
 	bool short_out;
 	bool short_in;
+	struct {
+		t230c_u8 endpoint;
+		int result;
+		t230c_u8 data[188];
+		size_t size;
+	} scripted[32];
+	unsigned int scripted_count;
+	unsigned int scripted_index;
+	t230c_u8 call_endpoints[64];
+	t230c_u32 call_timeouts[64];
 };
 
 static int mock_bulk_transfer(void *context, t230c_u8 endpoint,
@@ -28,15 +39,34 @@ static int mock_bulk_transfer(void *context, t230c_u8 endpoint,
 	if (!actual || !timeout_ms)
 		return -EINVAL;
 	mock->endpoint = endpoint;
+	if (mock->calls < sizeof(mock->call_endpoints) / sizeof(mock->call_endpoints[0])) {
+		mock->call_endpoints[mock->calls] = endpoint;
+		mock->call_timeouts[mock->calls] = timeout_ms;
+	}
 	mock->calls++;
 	if (endpoint == 0x01) {
 		memcpy(mock->out, data, size);
 		mock->out_size = size;
+		mock->out_calls++;
 		*actual = mock->short_out && size ? size - 1 : size;
 		return 0;
 	}
-	if (endpoint != 0x81)
+	if (endpoint != 0x81 && endpoint != 0x82)
 		return -EINVAL;
+	if (mock->scripted_index < mock->scripted_count) {
+		const unsigned int index = mock->scripted_index++;
+		if (mock->scripted[index].endpoint != endpoint)
+			return -EPROTO;
+		if (mock->scripted[index].size > size)
+			return -EMSGSIZE;
+		memcpy(data, mock->scripted[index].data, mock->scripted[index].size);
+		*actual = mock->scripted[index].size;
+		return mock->scripted[index].result;
+	}
+	if (endpoint == 0x82) {
+		*actual = 0;
+		return -ETIMEDOUT;
+	}
 	if (mock->response_size > size)
 		return -EMSGSIZE;
 	memcpy(data, mock->response, mock->response_size);
@@ -47,6 +77,27 @@ static int mock_bulk_transfer(void *context, t230c_u8 endpoint,
 static t230c_u64 mock_now_ms(void *context)
 {
 	return ((struct usb_mock *)context)->now_ms;
+}
+
+static void script_read(struct usb_mock *mock, t230c_u8 endpoint, int result,
+			const t230c_u8 *data, size_t size)
+{
+	const unsigned int index = mock->scripted_count++;
+	mock->scripted[index].endpoint = endpoint;
+	mock->scripted[index].result = result;
+	mock->scripted[index].size = size;
+	if (size)
+		memcpy(mock->scripted[index].data, data, size);
+}
+
+static void reset_script(struct usb_mock *mock)
+{
+	mock->scripted_count = 0;
+	mock->scripted_index = 0;
+	mock->calls = 0;
+	mock->out_calls = 0;
+	memset(mock->call_endpoints, 0, sizeof(mock->call_endpoints));
+	memset(mock->call_timeouts, 0, sizeof(mock->call_timeouts));
 }
 
 struct emitted_packets {
@@ -140,6 +191,73 @@ int main(void)
 	mock.response_size = 1;
 	CHECK(t230c_usb_command(&usb, command, sizeof(command), response, 1, 2000) == -EIO);
 	mock.short_in = false;
+
+	/* 初期化前に EP81 と EP82 の残留データを短い期限で空にする。 */
+	reset_script(&mock);
+	script_read(&mock, 0x81, 0, (t230c_u8[]){ 0x08 }, 1);
+	script_read(&mock, 0x81, -ETIMEDOUT, NULL, 0);
+	script_read(&mock, 0x82, 0, (t230c_u8[188]){ 0 }, 188);
+	script_read(&mock, 0x82, -ETIMEDOUT, NULL, 0);
+	struct t230c_usb_resync_stats stats = { 0 };
+	CHECK(t230c_usb_resynchronize(&usb, 3, 4, &stats) == 0);
+	CHECK(stats.ep81_bytes == 1 && stats.ep82_bytes == 188);
+	CHECK(stats.ep81_reads == 2 && stats.ep82_reads == 2);
+	CHECK(stats.ep81_preview_size == 1 && stats.ep81_preview[0] == 0x08);
+	CHECK(mock.calls == 4 && mock.call_endpoints[0] == 0x81 &&
+	      mock.call_endpoints[2] == 0x82);
+	CHECK(mock.out_calls == 0);
+	CHECK(mock.call_timeouts[0] == 3 && mock.call_timeouts[3] == 3);
+
+	/* 上限までデータが続く場合は、未排出の可能性を残したまま成功しない。 */
+	reset_script(&mock);
+	script_read(&mock, 0x81, 0, (t230c_u8[]){ 0x01 }, 1);
+	script_read(&mock, 0x81, 0, (t230c_u8[]){ 0x02 }, 1);
+	CHECK(t230c_usb_resynchronize(&usb, 3, 2, &stats) == -EOVERFLOW);
+	CHECK(stats.ep81_bytes == 2 && mock.calls == 2);
+
+	/* EP82 may still carry live TS after HostKill; its initial drain remains bounded. */
+	reset_script(&mock);
+	script_read(&mock, 0x81, -ETIMEDOUT, NULL, 0);
+	for (i = 0; i < 4; ++i)
+		script_read(&mock, 0x82, 0, (t230c_u8[188]){ 0x47 }, 188);
+	CHECK(t230c_usb_resynchronize(&usb, 3, 4, &stats) == 0);
+	CHECK(stats.ep81_reads == 1 && stats.ep82_reads == 4 &&
+	      stats.ep82_bytes == 188 * 4 && stats.ep82_limit_reached);
+
+	/* GPIO の level 設定は応答長不一致後に同期して一度だけ再送する。 */
+	reset_script(&mock);
+	script_read(&mock, 0x81, 0, NULL, 0);
+	script_read(&mock, 0x81, 0, (t230c_u8[]){ 0x08 }, 1);
+	script_read(&mock, 0x81, -ETIMEDOUT, NULL, 0);
+	script_read(&mock, 0x81, 0, (t230c_u8[]){ 0x80 }, 1);
+	CHECK(t230c_usb_gpio_set(&usb, 0x83, 0, 100, 3, 4) == 0);
+	CHECK(mock.out_calls == 2 && mock.out_size == 3 &&
+	      memcmp(mock.out, (t230c_u8[]){ 0x0e, 0x83, 0 }, 3) == 0);
+	CHECK(mock.scripted_index == mock.scripted_count);
+
+	/* 純粋な Si2168 read は再送するが、I/O write が短いときは再送しない。 */
+	reset_script(&mock);
+	script_read(&mock, 0x81, 0, (t230c_u8[]){ 0x08 }, 1);
+	script_read(&mock, 0x81, -ETIMEDOUT, NULL, 0);
+	script_read(&mock, 0x81, 0, (t230c_u8[]){ 0x80, 0x12, 0x34 }, 3);
+	CHECK(t230c_usb_si2168_read(&usb, 0x64, read_data, sizeof(read_data), 100, 3, 4) == 0);
+	CHECK(mock.out_calls == 2 && mock.out_size == 4 &&
+	      memcmp(mock.out, (t230c_u8[]){ 0x09, 0, 2, 0x64 }, 4) == 0);
+	CHECK(read_data[0] == 0x12 && read_data[1] == 0x34);
+	reset_script(&mock);
+	CHECK(t230c_usb_si2168_read(&usb, 0x60, read_data, sizeof(read_data), 100, 3, 4) == -EINVAL);
+	CHECK(mock.out_calls == 0);
+	reset_script(&mock);
+	script_read(&mock, 0x81, 0, (t230c_u8[]){ 0x08 }, 1);
+	script_read(&mock, 0x81, -ETIMEDOUT, NULL, 0);
+	script_read(&mock, 0x81, 0, (t230c_u8[]){ 0x08 }, 1);
+	CHECK(t230c_usb_si2168_read(&usb, 0x64, read_data, sizeof(read_data), 100, 3, 4) == -EIO);
+	CHECK(mock.out_calls == 2);
+	reset_script(&mock);
+	mock.short_out = true;
+	CHECK(t230c_usb_gpio_set(&usb, 0x83, 0, 100, 3, 4) == -EIO);
+	CHECK(mock.out_calls == 1);
+	mock.short_out = false;
 
 	CHECK(si2168_validate_firmware(firmware, sizeof(firmware)) == 0);
 	firmware[0] = 17;

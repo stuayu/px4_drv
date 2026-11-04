@@ -42,6 +42,16 @@ struct t230c_usb {
 	struct i2c_comm_master i2c_master;
 };
 
+struct t230c_usb_resync_stats {
+	t230c_u32 ep81_reads;
+	t230c_u32 ep82_reads;
+	t230c_u64 ep81_bytes;
+	t230c_u64 ep82_bytes;
+	t230c_u32 ep81_preview_size;
+	t230c_u8 ep81_preview[64];
+	t230c_u8 ep82_limit_reached;
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -59,6 +69,22 @@ int t230c_usb_i2c_transfer(struct t230c_usb *usb, t230c_u8 address,
 int t230c_usb_i2c_request(void *context,
 			  const struct i2c_comm_request *requests, int count);
 int t230c_usb_i2c_gate_ctrl(void *context, bool open);
+int t230c_usb_resynchronize(struct t230c_usb *usb, t230c_u32 read_timeout_ms,
+			    t230c_u32 max_reads_per_endpoint,
+			    struct t230c_usb_resync_stats *stats);
+int t230c_usb_resynchronize_response(struct t230c_usb *usb,
+				     t230c_u32 read_timeout_ms,
+				     t230c_u32 max_reads,
+				     t230c_u32 *reads,
+				     t230c_u64 *bytes);
+int t230c_usb_gpio_set(struct t230c_usb *usb, t230c_u8 port,
+		       t230c_u8 value, t230c_u32 timeout_ms,
+		       t230c_u32 resync_timeout_ms,
+		       t230c_u32 max_reads_per_endpoint);
+int t230c_usb_si2168_read(struct t230c_usb *usb, t230c_u8 address,
+			  t230c_u8 *read, size_t read_size,
+			  t230c_u32 timeout_ms, t230c_u32 resync_timeout_ms,
+			  t230c_u32 max_reads_per_endpoint);
 
 #ifdef __cplusplus
 }

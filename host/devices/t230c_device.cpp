@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <limits>
 #include <thread>
@@ -11,11 +12,16 @@
 #endif
 
 #include "msg.h"
+#include "t230c_pipe_timeout.hpp"
 #include "util.hpp"
 #include "t230c_tuning.hpp"
-#include "t230c_usb_recovery.h"
 
 namespace px4 {
+namespace {
+/* 1 read で2 byte残留し次の read で空になった実測に、3応答分の上限を置く。 */
+constexpr unsigned int kT230CResyncReadTimeoutMs = 5;
+constexpr unsigned int kT230CResyncMaxReadsPerEndpoint = 4;
+}
 
 class T230CDevice::Receiver final : public ReceiverBase {
 public:
@@ -72,9 +78,12 @@ unsigned int T230CDevice::ControlTimeout() const
 }
 
 /* コマンド送信の短い転送は失敗として上位へ返す。 */
-int T230CDevice::TransferOut(const std::uint8_t *data, std::size_t size)
+int T230CDevice::TransferOut(const std::uint8_t *data, std::size_t size,
+			     unsigned int timeout_ms)
 {
-	const unsigned int timeout = ControlTimeout();
+	const unsigned int control_timeout = ControlTimeout();
+	const unsigned int timeout = timeout_ms && timeout_ms < control_timeout
+		? timeout_ms : control_timeout;
 	if (!timeout)
 		return -ETIMEDOUT;
 #ifdef __APPLE__
@@ -96,9 +105,13 @@ int T230CDevice::TransferOut(const std::uint8_t *data, std::size_t size)
 }
 
 /* コマンド応答の待機も操作全体の期限内に収める。 */
-int T230CDevice::TransferIn(std::uint8_t endpoint, std::uint8_t *data, std::size_t size, std::size_t &actual)
+int T230CDevice::TransferIn(std::uint8_t endpoint, std::uint8_t *data,
+			    std::size_t size, std::size_t &actual,
+			    unsigned int timeout_ms)
 {
-	const unsigned int timeout = ControlTimeout();
+	const unsigned int control_timeout = ControlTimeout();
+	const unsigned int timeout = timeout_ms && timeout_ms < control_timeout
+		? timeout_ms : control_timeout;
 	actual = 0;
 	if (!timeout)
 		return -ETIMEDOUT;
@@ -110,79 +123,38 @@ int T230CDevice::TransferIn(std::uint8_t endpoint, std::uint8_t *data, std::size
 		return -ETIMEDOUT;
 	return ret ? -EIO : 0;
 #else
-	ULONG pipe_timeout = timeout;
-	if (!WinUsb_SetPipePolicy(usb_dev_.winusb, endpoint, PIPE_TRANSFER_TIMEOUT, sizeof(pipe_timeout), &pipe_timeout))
-		return -EIO;
-	ULONG transferred = 0;
-	if (!WinUsb_ReadPipe(usb_dev_.winusb, endpoint, data, static_cast<ULONG>(size), &transferred, nullptr))
-		return GetLastError() == ERROR_SEM_TIMEOUT ? -ETIMEDOUT : -EIO;
-	actual = transferred;
-	return 0;
+	return t230c::ReadWithTemporaryTimeout(this, endpoint, data, size,
+		actual, timeout,
+		[](void *context, std::uint8_t pipe, std::uint32_t &previous) {
+			auto &device = *static_cast<T230CDevice *>(context);
+			ULONG value = 0;
+			ULONG value_size = sizeof(value);
+			if (!WinUsb_GetPipePolicy(device.usb_dev_.winusb, pipe,
+						  PIPE_TRANSFER_TIMEOUT, &value_size, &value))
+				return -EIO;
+			previous = value;
+			return 0;
+		},
+		[](void *context, std::uint8_t pipe, std::uint32_t value) {
+			auto &device = *static_cast<T230CDevice *>(context);
+			ULONG pipe_timeout = value;
+			return WinUsb_SetPipePolicy(device.usb_dev_.winusb, pipe,
+						    PIPE_TRANSFER_TIMEOUT,
+						    sizeof(pipe_timeout), &pipe_timeout)
+				? 0 : -EIO;
+		},
+		[](void *context, std::uint8_t pipe, std::uint8_t *buffer,
+		   std::size_t buffer_size, std::size_t &transferred) {
+		auto &device = *static_cast<T230CDevice *>(context);
+		ULONG actual_size = 0;
+		if (!WinUsb_ReadPipe(device.usb_dev_.winusb, pipe, buffer,
+				     static_cast<ULONG>(buffer_size), &actual_size, nullptr))
+			return GetLastError() == ERROR_SEM_TIMEOUT ? -ETIMEDOUT : -EIO;
+		transferred = actual_size;
+		return 0;
+		});
 #endif
 }
-
-/* 初期化の前に、異常終了したHostが残した転送を回収する。 */
-int T230CDevice::PrepareUsbForInit()
-{
-	static const struct t230c_usb_recovery_ops ops = {
-#ifdef _WIN32
-		AbortPipeForInit,
-		FlushPipeForInit,
-		ResetPipeForInit,
-#else
-		nullptr,
-		nullptr,
-		nullptr,
-#endif
-		StopStreamForInit,
-	};
-	return t230c_usb_recover_for_init(&ops, this);
-}
-
-int T230CDevice::StopStreamForInit(void *context)
-{
-	auto &device = *static_cast<T230CDevice *>(context);
-	const std::uint8_t stop[] = {0x37, 0, 0};
-	return device.TransferOut(stop, sizeof(stop));
-}
-
-#ifdef _WIN32
-int T230CDevice::AbortPipeForInit(void *context, std::uint8_t endpoint)
-{
-	auto &device = *static_cast<T230CDevice *>(context);
-	if (!WinUsb_AbortPipe(device.usb_dev_.winusb, endpoint)) {
-		const DWORD error = GetLastError();
-		msg_err("T230C WinUsb_AbortPipe(0x%02x) failed (%lu)\n",
-			static_cast<unsigned int>(endpoint), static_cast<unsigned long>(error));
-		return -EIO;
-	}
-	return 0;
-}
-
-int T230CDevice::FlushPipeForInit(void *context, std::uint8_t endpoint)
-{
-	auto &device = *static_cast<T230CDevice *>(context);
-	if (!WinUsb_FlushPipe(device.usb_dev_.winusb, endpoint)) {
-		const DWORD error = GetLastError();
-		msg_err("T230C WinUsb_FlushPipe(0x%02x) failed (%lu)\n",
-			static_cast<unsigned int>(endpoint), static_cast<unsigned long>(error));
-		return -EIO;
-	}
-	return 0;
-}
-
-int T230CDevice::ResetPipeForInit(void *context, std::uint8_t endpoint)
-{
-	auto &device = *static_cast<T230CDevice *>(context);
-	if (!WinUsb_ResetPipe(device.usb_dev_.winusb, endpoint)) {
-		const DWORD error = GetLastError();
-		msg_err("T230C WinUsb_ResetPipe(0x%02x) failed (%lu)\n",
-			static_cast<unsigned int>(endpoint), static_cast<unsigned long>(error));
-		return -EIO;
-	}
-	return 0;
-}
-#endif
 
 /* USB ブリッジの応答は要求したバイト数だけ消費する。 */
 int T230CDevice::Command(const std::uint8_t *data, std::size_t size,
@@ -201,13 +173,13 @@ int T230CDevice::UsbBulkTransfer(void *context, t230c_u8 endpoint,
 		return -ETIMEDOUT;
 	*actual = 0;
 	if (endpoint == 0x01) {
-		int ret = device.TransferOut(data, size);
+		int ret = device.TransferOut(data, size, timeout_ms);
 		if (!ret)
 			*actual = size;
 		return ret;
 	}
-	if (endpoint == 0x81)
-		return device.TransferIn(endpoint, data, size, *actual);
+	if (endpoint == 0x81 || endpoint == 0x82)
+		return device.TransferIn(endpoint, data, size, *actual, timeout_ms);
 	return -EINVAL;
 }
 
@@ -229,6 +201,11 @@ int T230CDevice::I2c(std::uint8_t address, const t230c::Bytes &write, t230c::Byt
 /* ブリッジ固有の長さ制限と応答ヘッダーをこの層で扱う。 */
 int T230CDevice::I2cRaw(std::uint8_t address, const t230c::Bytes &write, t230c::Bytes &read)
 {
+	/* Si2141 と write を含む I2C request は副作用があるため再送しない。 */
+	if (address == 0x64 && write.empty() && !read.empty())
+		return t230c_usb_si2168_read(&usb_core_, address, read.data(), read.size(),
+				  ControlTimeout(), kT230CResyncReadTimeoutMs,
+				  kT230CResyncMaxReadsPerEndpoint);
 	if (read.empty())
 		return t230c_usb_i2c_transfer(&usb_core_, address,
 				write.empty() ? nullptr : write.data(), write.size(),
@@ -251,6 +228,31 @@ int T230CDevice::Init()
 	int usb_ret = t230c_usb_init(&usb_core_, &usb_ops, this, 2000);
 	if (usb_ret)
 		return usb_ret;
+	/* 最初の USB command より前に response FIFO と前回の TS を排出する。 */
+	struct t230c_usb_resync_stats resync_stats = {};
+	int resync_ret = t230c_usb_resynchronize(&usb_core_, kT230CResyncReadTimeoutMs,
+						 kT230CResyncMaxReadsPerEndpoint,
+						 &resync_stats);
+	char ep81_preview[64 * 2 + 1] = {};
+	for (unsigned int i = 0; i < resync_stats.ep81_preview_size; ++i)
+		std::snprintf(ep81_preview + i * 2, sizeof(ep81_preview) - i * 2,
+			      "%02x", resync_stats.ep81_preview[i]);
+	if (resync_ret) {
+		msg_err("T230C response resync failed: ret=%d, EP81 reads=%u bytes=%llu preview=%s, EP82 reads=%u bytes=%llu\n",
+			resync_ret, resync_stats.ep81_reads,
+			static_cast<unsigned long long>(resync_stats.ep81_bytes), ep81_preview,
+			resync_stats.ep82_reads,
+			static_cast<unsigned long long>(resync_stats.ep82_bytes));
+		throw DeviceError("T230C response resynchronization failed (ret=" +
+				  std::to_string(resync_ret) + ").");
+	}
+	msg_info("T230C response resync: EP81 reads=%u bytes=%llu preview=%s, EP82 reads=%u bytes=%llu limit=%u\n",
+		 resync_stats.ep81_reads,
+		 static_cast<unsigned long long>(resync_stats.ep81_bytes),
+		 ep81_preview,
+		 resync_stats.ep82_reads,
+		 static_cast<unsigned long long>(resync_stats.ep82_bytes),
+		 static_cast<unsigned int>(resync_stats.ep82_limit_reached));
 	const auto &config = device_def_.configs;
 	xfer_packets_ = util::wtoui(config.Get(L"XferPackets", L"816"));
 	max_urbs_ = util::wtoui(config.Get(L"MaxUrbs", L"8"));
@@ -290,19 +292,13 @@ int T230CDevice::Init()
 	if (t230c::LoadFirmwareFile(demod_path, demod_fw_, error))
 		throw DeviceError(std::string("T230C firmware: ") + error);
 
-	/* Host異常終了後はWinUSBの制御・TSパイプを回収し、FX2のTS出力を止めてからGPIO resetを行う。 */
-	int recovery_ret = PrepareUsbForInit();
-	if (recovery_ret)
-		throw DeviceError("T230C USB recovery before initialization failed (ret=" +
-			std::to_string(recovery_ret) + ").");
-
-	/* ブリッジの GPIO reset は Linux の identify_state と同じ順序で切り替える。 */
+	/* ブリッジの GPIO は Linux の identify_state と同じ順序で切り替える。 */
 	const std::uint8_t gpio[][2] = {{4, 1}, {0x83, 0}, {0xc0, 1}, {0x83, 1}, {0xc0, 0}};
 	const unsigned int waits[] = {20, 0, 100, 0, 50};
 	for (unsigned int i = 0; i < 5; ++i) {
-		std::uint8_t command[] = {0x0e, gpio[i][0], gpio[i][1]};
-		std::uint8_t response = 0;
-		int ret = Command(command, sizeof(command), &response, 1);
+		int ret = t230c_usb_gpio_set(&usb_core_, gpio[i][0], gpio[i][1],
+					     ControlTimeout(), kT230CResyncReadTimeoutMs,
+					     kT230CResyncMaxReadsPerEndpoint);
 		if (ret)
 			throw DeviceError("T230C GPIO initialization failed at step " + std::to_string(i) +
 				" (ret=" + std::to_string(ret) + ").");

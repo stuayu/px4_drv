@@ -12,6 +12,16 @@
 
 #define T230C_USB_MAX_COMMAND_SIZE 64U
 #define T230C_USB_MAX_I2C_SIZE 60U
+#define T230C_USB_RESYNC_READ_SIZE 188U
+
+static int t230c_usb_i2c_transfer_internal(struct t230c_usb *usb,
+					   t230c_u8 address,
+					   const t230c_u8 *write,
+					   size_t write_size,
+					   t230c_u8 *read,
+					   size_t read_size,
+					   t230c_u32 timeout_ms,
+					   bool *response_length_mismatch);
 
 static t230c_u32 t230c_usb_timeout(struct t230c_usb *usb,
 				   t230c_u32 timeout_ms)
@@ -58,13 +68,17 @@ void t230c_usb_set_deadline(struct t230c_usb *usb, t230c_u64 deadline_ms)
 		usb->deadline_ms = deadline_ms;
 }
 
-int t230c_usb_command(struct t230c_usb *usb, const t230c_u8 *write,
-		      size_t write_size, t230c_u8 *response,
-		      size_t response_size, t230c_u32 timeout_ms)
+static int t230c_usb_command_internal(struct t230c_usb *usb,
+				      const t230c_u8 *write,
+				      size_t write_size, t230c_u8 *response,
+				      size_t response_size, t230c_u32 timeout_ms,
+				      bool *response_length_mismatch)
 {
 	size_t actual = 0;
 	int ret;
 
+	if (response_length_mismatch)
+		*response_length_mismatch = false;
 	if (!usb || !usb->ops || !write || !write_size ||
 	    write_size > T230C_USB_MAX_COMMAND_SIZE ||
 	    response_size > T230C_USB_MAX_COMMAND_SIZE ||
@@ -91,13 +105,171 @@ int t230c_usb_command(struct t230c_usb *usb, const t230c_u8 *write,
 				     response_size, &actual, timeout_ms);
 	if (ret)
 		return ret;
-	return actual == response_size ? 0 : -EIO;
+	if (actual != response_size) {
+		if (response_length_mismatch)
+			*response_length_mismatch = true;
+		return -EIO;
+	}
+	return 0;
 }
 
-int t230c_usb_i2c_transfer(struct t230c_usb *usb, t230c_u8 address,
-			   const t230c_u8 *write, size_t write_size,
-			   t230c_u8 *read, size_t read_size,
-			   t230c_u32 timeout_ms)
+int t230c_usb_command(struct t230c_usb *usb, const t230c_u8 *write,
+		      size_t write_size, t230c_u8 *response,
+		      size_t response_size, t230c_u32 timeout_ms)
+{
+	return t230c_usb_command_internal(usb, write, write_size, response,
+					  response_size, timeout_ms, NULL);
+}
+
+static int t230c_usb_drain_endpoint(struct t230c_usb *usb,
+				    t230c_u8 endpoint,
+				    t230c_u32 read_timeout_ms,
+				    t230c_u32 max_reads,
+				    struct t230c_usb_resync_stats *stats)
+{
+	t230c_u8 buffer[T230C_USB_RESYNC_READ_SIZE];
+	t230c_u32 read;
+	int ret;
+
+	for (read = 0; read < max_reads; ++read) {
+		size_t actual = 0;
+		ret = usb->ops->bulk_transfer(usb->context, endpoint, buffer,
+					      sizeof(buffer), &actual,
+					      read_timeout_ms);
+		if (endpoint == 0x81)
+			stats->ep81_reads++;
+		else
+			stats->ep82_reads++;
+		if (actual > sizeof(buffer))
+			return -EIO;
+		if (ret && ret != -ETIMEDOUT)
+			return ret;
+		if (!actual)
+			return 0;
+		if (endpoint == 0x81)
+			stats->ep81_bytes += actual;
+		else
+			stats->ep82_bytes += actual;
+		if (endpoint == 0x81 && stats->ep81_preview_size < sizeof(stats->ep81_preview)) {
+			size_t preview_size = sizeof(stats->ep81_preview) - stats->ep81_preview_size;
+			if (preview_size > actual)
+				preview_size = actual;
+			memcpy(stats->ep81_preview + stats->ep81_preview_size,
+			       buffer, preview_size);
+			stats->ep81_preview_size += (t230c_u32)preview_size;
+		}
+	}
+	return -EOVERFLOW;
+}
+
+/* USB 再オープン後に残る応答と、前回の TS を次の初期化へ混ぜない。 */
+int t230c_usb_resynchronize(struct t230c_usb *usb, t230c_u32 read_timeout_ms,
+			    t230c_u32 max_reads_per_endpoint,
+			    struct t230c_usb_resync_stats *stats)
+{
+	struct t230c_usb_resync_stats local_stats = { 0 };
+	int ret;
+
+	if (!usb || !usb->ops || !usb->ops->bulk_transfer || !read_timeout_ms ||
+	    !max_reads_per_endpoint)
+		return -EINVAL;
+	if (!stats)
+		stats = &local_stats;
+	memset(stats, 0, sizeof(*stats));
+	ret = t230c_usb_drain_endpoint(usb, 0x81, read_timeout_ms,
+				       max_reads_per_endpoint, stats);
+	if (ret)
+		return ret;
+	ret = t230c_usb_drain_endpoint(usb, 0x82, read_timeout_ms,
+				       max_reads_per_endpoint, stats);
+	if (ret == -EOVERFLOW) {
+		/* Active TS may refill EP82, so cap the initial drain and continue initialization. */
+		stats->ep82_limit_reached = 1;
+		return 0;
+	}
+	return ret;
+}
+
+/* 通常受信中の応答ずれでは、TS endpoint を読んで受信データを捨てない。 */
+int t230c_usb_resynchronize_response(struct t230c_usb *usb,
+				     t230c_u32 read_timeout_ms,
+				     t230c_u32 max_reads,
+				     t230c_u32 *reads,
+				     t230c_u64 *bytes)
+{
+	struct t230c_usb_resync_stats stats = { 0 };
+	int ret;
+
+	if (!usb || !usb->ops || !usb->ops->bulk_transfer || !read_timeout_ms ||
+	    !max_reads)
+		return -EINVAL;
+	ret = t230c_usb_drain_endpoint(usb, 0x81, read_timeout_ms, max_reads,
+				       &stats);
+	if (reads)
+		*reads = stats.ep81_reads;
+	if (bytes)
+		*bytes = stats.ep81_bytes;
+	return ret;
+}
+
+/* GPIO は同じ出力値を再設定する操作なので、応答短縮時だけ一度再送する。 */
+int t230c_usb_gpio_set(struct t230c_usb *usb, t230c_u8 port,
+		       t230c_u8 value, t230c_u32 timeout_ms,
+		       t230c_u32 resync_timeout_ms,
+		       t230c_u32 max_reads_per_endpoint)
+{
+	t230c_u8 command[] = { 0x0e, port, value };
+	t230c_u8 response;
+	bool response_length_mismatch = false;
+	int ret;
+
+	ret = t230c_usb_command_internal(usb, command, sizeof(command), &response,
+					 sizeof(response), timeout_ms,
+					 &response_length_mismatch);
+	if (!response_length_mismatch)
+		return ret;
+	ret = t230c_usb_resynchronize_response(usb, resync_timeout_ms,
+					       max_reads_per_endpoint,
+					       NULL, NULL);
+	if (ret)
+		return ret;
+	return t230c_usb_command(usb, command, sizeof(command), &response,
+				 sizeof(response), timeout_ms);
+}
+
+/* Si2168 の read-only request に限って、応答短縮後に一度だけ再試行する。 */
+int t230c_usb_si2168_read(struct t230c_usb *usb, t230c_u8 address,
+			  t230c_u8 *read, size_t read_size,
+			  t230c_u32 timeout_ms, t230c_u32 resync_timeout_ms,
+			  t230c_u32 max_reads_per_endpoint)
+{
+	int ret;
+
+	if (address != 0x64 || !read || !read_size)
+		return -EINVAL;
+	bool response_length_mismatch = false;
+	ret = t230c_usb_i2c_transfer_internal(usb, address, NULL, 0, read,
+					      read_size, timeout_ms,
+					      &response_length_mismatch);
+	if (!response_length_mismatch)
+		return ret;
+	ret = t230c_usb_resynchronize_response(usb, resync_timeout_ms,
+					       max_reads_per_endpoint,
+					       NULL, NULL);
+	if (ret)
+		return ret;
+	return t230c_usb_i2c_transfer(usb, address, NULL, 0, read, read_size,
+				     timeout_ms);
+}
+
+static int t230c_usb_i2c_transfer_internal(struct t230c_usb *usb,
+					   t230c_u8 address,
+					   const t230c_u8 *write,
+					   size_t write_size,
+					   t230c_u8 *read,
+					   size_t read_size,
+					   t230c_u32 timeout_ms,
+					   bool *response_length_mismatch)
 {
 	t230c_u8 command[T230C_USB_MAX_COMMAND_SIZE];
 	t230c_u8 response[T230C_USB_MAX_I2C_SIZE + 1];
@@ -105,6 +277,8 @@ int t230c_usb_i2c_transfer(struct t230c_usb *usb, t230c_u8 address,
 	size_t response_size;
 	int ret;
 
+	if (response_length_mismatch)
+		*response_length_mismatch = false;
 	if (!usb || address > 0x7f || write_size > T230C_USB_MAX_I2C_SIZE ||
 	    read_size > T230C_USB_MAX_I2C_SIZE ||
 	    (write_size && !write) || (read_size && !read) ||
@@ -133,11 +307,21 @@ int t230c_usb_i2c_transfer(struct t230c_usb *usb, t230c_u8 address,
 	}
 
 	response_size = read_size ? read_size + 1 : 1;
-	ret = t230c_usb_command(usb, command, command_size,
-				response, response_size, timeout_ms);
+	ret = t230c_usb_command_internal(usb, command, command_size,
+					 response, response_size, timeout_ms,
+					 response_length_mismatch);
 	if (!ret && read_size)
 		memcpy(read, response + 1, read_size);
 	return ret;
+}
+
+int t230c_usb_i2c_transfer(struct t230c_usb *usb, t230c_u8 address,
+			   const t230c_u8 *write, size_t write_size,
+			   t230c_u8 *read, size_t read_size,
+			   t230c_u32 timeout_ms)
+{
+	return t230c_usb_i2c_transfer_internal(usb, address, write, write_size,
+					       read, read_size, timeout_ms, NULL);
 }
 
 int t230c_usb_i2c_request(void *context,
