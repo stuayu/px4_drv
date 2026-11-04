@@ -256,6 +256,7 @@
     <ClCompile Include="..\..\..\driver\common\tuner\r850.c" />
     <ClCompile Include="..\..\..\driver\common\tuner\rt710.c" />
     <ClCompile Include="..\..\..\driver\common\bridge\t230c_usb.c" />
+    <ClCompile Include="..\..\..\driver\common\bridge\t230c_usb_recovery.c" />
     <ClCompile Include="..\..\..\driver\common\demod\si2168.c" />
     <ClCompile Include="..\..\..\driver\common\tuner\si2141.c" />
     <ClCompile Include="..\..\..\driver\common\ts\t230c_ts_sync.c" />
@@ -333,6 +334,7 @@
     <ClInclude Include="..\..\..\host\devices\t230c_protocol.hpp" />
     <ClInclude Include="..\..\..\host\devices\t230c_silicon.hpp" />
     <ClInclude Include="..\..\..\driver\common\bridge\t230c_usb.h" />
+    <ClInclude Include="..\..\..\driver\common\bridge\t230c_usb_recovery.h" />
     <ClInclude Include="..\..\..\driver\common\demod\si2168.h" />
     <ClInclude Include="..\..\..\driver\common\tuner\si2141.h" />
     <ClInclude Include="..\..\..\driver\common\ts\t230c_ts_sync.h" />

@@ -13,6 +13,7 @@
 #include "msg.h"
 #include "util.hpp"
 #include "t230c_tuning.hpp"
+#include "t230c_usb_recovery.h"
 
 namespace px4 {
 
@@ -120,6 +121,69 @@ int T230CDevice::TransferIn(std::uint8_t endpoint, std::uint8_t *data, std::size
 #endif
 }
 
+/* 初期化の前に、異常終了したHostが残した転送を回収する。 */
+int T230CDevice::PrepareUsbForInit()
+{
+	static const struct t230c_usb_recovery_ops ops = {
+#ifdef _WIN32
+		AbortPipeForInit,
+		FlushPipeForInit,
+		ResetPipeForInit,
+#else
+		nullptr,
+		nullptr,
+		nullptr,
+#endif
+		StopStreamForInit,
+	};
+	return t230c_usb_recover_for_init(&ops, this);
+}
+
+int T230CDevice::StopStreamForInit(void *context)
+{
+	auto &device = *static_cast<T230CDevice *>(context);
+	const std::uint8_t stop[] = {0x37, 0, 0};
+	return device.TransferOut(stop, sizeof(stop));
+}
+
+#ifdef _WIN32
+int T230CDevice::AbortPipeForInit(void *context, std::uint8_t endpoint)
+{
+	auto &device = *static_cast<T230CDevice *>(context);
+	if (!WinUsb_AbortPipe(device.usb_dev_.winusb, endpoint)) {
+		const DWORD error = GetLastError();
+		msg_err("T230C WinUsb_AbortPipe(0x%02x) failed (%lu)\n",
+			static_cast<unsigned int>(endpoint), static_cast<unsigned long>(error));
+		return -EIO;
+	}
+	return 0;
+}
+
+int T230CDevice::FlushPipeForInit(void *context, std::uint8_t endpoint)
+{
+	auto &device = *static_cast<T230CDevice *>(context);
+	if (!WinUsb_FlushPipe(device.usb_dev_.winusb, endpoint)) {
+		const DWORD error = GetLastError();
+		msg_err("T230C WinUsb_FlushPipe(0x%02x) failed (%lu)\n",
+			static_cast<unsigned int>(endpoint), static_cast<unsigned long>(error));
+		return -EIO;
+	}
+	return 0;
+}
+
+int T230CDevice::ResetPipeForInit(void *context, std::uint8_t endpoint)
+{
+	auto &device = *static_cast<T230CDevice *>(context);
+	if (!WinUsb_ResetPipe(device.usb_dev_.winusb, endpoint)) {
+		const DWORD error = GetLastError();
+		msg_err("T230C WinUsb_ResetPipe(0x%02x) failed (%lu)\n",
+			static_cast<unsigned int>(endpoint), static_cast<unsigned long>(error));
+		return -EIO;
+	}
+	return 0;
+}
+#endif
+
 /* USB ブリッジの応答は要求したバイト数だけ消費する。 */
 int T230CDevice::Command(const std::uint8_t *data, std::size_t size,
 	std::uint8_t *response, std::size_t response_size)
@@ -226,7 +290,13 @@ int T230CDevice::Init()
 	if (t230c::LoadFirmwareFile(demod_path, demod_fw_, error))
 		throw DeviceError(std::string("T230C firmware: ") + error);
 
-	/* ブリッジの GPIO は Linux の identify_state と同じ順序で切り替える。 */
+	/* Host異常終了後はWinUSBの制御・TSパイプを回収し、FX2のTS出力を止めてからGPIO resetを行う。 */
+	int recovery_ret = PrepareUsbForInit();
+	if (recovery_ret)
+		throw DeviceError("T230C USB recovery before initialization failed (ret=" +
+			std::to_string(recovery_ret) + ").");
+
+	/* ブリッジの GPIO reset は Linux の identify_state と同じ順序で切り替える。 */
 	const std::uint8_t gpio[][2] = {{4, 1}, {0x83, 0}, {0xc0, 1}, {0x83, 1}, {0xc0, 0}};
 	const unsigned int waits[] = {20, 0, 100, 0, 50};
 	for (unsigned int i = 0; i < 5; ++i) {

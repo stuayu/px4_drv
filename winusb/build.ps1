@@ -75,6 +75,16 @@ foreach ($build_platform in $build_platforms) {
         throw "TSMF filter test failed. platform: $build_platform"
     }
 
+    # Host 強制終了後の T230C USB pipe 回収順を検証
+    msbuild tests/t230c_usb_recovery_test.vcxproj /t:"Rebuild" /p:"Configuration=Release-static;Platform=$build_platform;PlatformToolset=v143"
+    if ($LASTEXITCODE -ne 0) {
+        throw "T230C USB recovery test build failed. platform: $build_platform"
+    }
+    & "build/$build_platform/Release-static/t230c_usb_recovery_test.exe"
+    if ($LASTEXITCODE -ne 0) {
+        throw "T230C USB recovery test failed. platform: $build_platform"
+    }
+
     # ISDB-C と J.83B の ChSet の列の解釈と不正な行の扱い、配布の ChSet がすべて読めることを検証
     & "build/$build_platform/Release-static/chset_isdbc_test.exe" "pkg/BonDriver_PX4/BonDriver_PX4-C.ChSet.txt" "pkg/BonDriver_PX4/BonDriver_PX4-J83B.ChSet.txt"
     if ($LASTEXITCODE -ne 0) {
