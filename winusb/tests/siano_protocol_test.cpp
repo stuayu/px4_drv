@@ -220,12 +220,43 @@ int main()
 	require(first_ts_byte == 0x47);
 	require(protocol.HandleTransfer(ts_message.data(), 7) == 0);
 	{
+		const auto diagnostics = protocol.GetDiagnostics();
+		require(diagnostics.decode_emsgsize_count == 1);
+		require(diagnostics.decode_dropped_bytes == 7);
+		require(diagnostics.decode_last_error_ms > 0);
+	}
+	protocol.RecordStreamWriteFailure(188, 64);
+	{
+		const auto diagnostics = protocol.GetDiagnostics();
+		require(diagnostics.stream_write_failure_count == 1);
+		require(diagnostics.stream_dropped_bytes == 124);
+		require(diagnostics.stream_last_error_ms > 0);
+	}
+	{
+		std::array<std::uint8_t, 12> short_bda_data{};
+		put16(short_bda_data.data(), 693);
+		put16(short_bda_data.data() + 4, 196);
+		short_bda_data[8] = 0x47;
+		FakeTransport short_transport;
+		px4::siano::Protocol short_protocol(short_transport, 0, {});
+		require(short_protocol.HandleTransfer(short_bda_data.data(),
+						     short_bda_data.size()) == 0);
+		const auto diagnostics = short_protocol.GetDiagnostics();
+		require(diagnostics.decode_emsgsize_count == 1);
+		require(diagnostics.decode_emsgsize_bda_data_count == 1);
+		require(diagnostics.decode_emsgsize_bda_data_bytes == short_bda_data.size());
+		require(diagnostics.decode_last_message_type == 693);
+	}
+	{
 		std::array<std::uint8_t, 8> invalid_header{};
 		put16(invalid_header.data(), 669);
 		put16(invalid_header.data() + 4, 7);
 		FakeTransport invalid_transport;
 		px4::siano::Protocol invalid_protocol(invalid_transport, 0, {});
 		require(invalid_protocol.HandleTransfer(invalid_header.data(), invalid_header.size()) == -EBADMSG);
+		const auto diagnostics = invalid_protocol.GetDiagnostics();
+		require(diagnostics.decode_ebadmsg_count == 1);
+		require(diagnostics.decode_dropped_bytes == invalid_header.size());
 	}
 	{
 		std::array<std::uint8_t, 8> overflow_header{};
@@ -236,6 +267,9 @@ int main()
 		px4::siano::Protocol overflow_protocol(overflow_transport,
 			(std::numeric_limits<std::size_t>::max)(), {});
 		require(overflow_protocol.HandleTransfer(overflow_header.data(), overflow_header.size()) == -EOVERFLOW);
+		const auto diagnostics = overflow_protocol.GetDiagnostics();
+		require(diagnostics.decode_eoverflow_count == 1);
+		require(diagnostics.decode_dropped_bytes == overflow_header.size());
 	}
 	{
 		std::array<std::uint8_t, 8> incomplete_version{};
@@ -243,6 +277,10 @@ int main()
 		put16(incomplete_version.data() + 4, 8);
 		require(protocol.HandleTransfer(incomplete_version.data(),
 						incomplete_version.size()) == -EMSGSIZE);
+		const auto diagnostics = protocol.GetDiagnostics();
+		require(diagnostics.decode_emsgsize_count == 1);
+		require(diagnostics.payload_short_count == 1);
+		require(diagnostics.payload_dropped_bytes == incomplete_version.size());
 	}
 
 	{

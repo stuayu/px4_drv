@@ -188,8 +188,11 @@ int SianoDevice::Init()
 			if (!capture_state_.IsEnabled() || !buffer_)
 				return;
 			std::size_t output_size = size;
-			if (buffer_->Write(data, output_size))
+			if (buffer_->Write(data, output_size)) {
 				buffer_->NotifyWrite();
+			} else if (protocol_) {
+				protocol_->RecordStreamWriteFailure(size, output_size);
+			}
 		}));
 
 	command::ReceiverInfo info = {};
@@ -216,8 +219,28 @@ void SianoDevice::Term()
 			itedtv_bus_stop_streaming(&stream_bus_);
 		streaming_ = false;
 	}
-	if (protocol_)
+	if (protocol_) {
 		protocol_->Disconnect();
+		const auto stats = protocol_->GetDiagnostics();
+		msg_log_at(PX4_LOG_INFO, PX4_LOG_CAT_SERVER,
+			   "Siano transfer statistics: host_index=%s decode_emsgsize=%llu decode_ebadmsg=%llu decode_eoverflow=%llu decode_other=%llu decode_dropped_bytes=%llu decode_last_ms=%llu decode_emsgsize_bda_data=%llu decode_emsgsize_bda_data_bytes=%llu decode_last_type=%u payload_short=%llu payload_dropped_bytes=%llu payload_last_ms=%llu stream_write_failures=%llu stream_dropped_bytes=%llu stream_last_ms=%llu.\n",
+			   dev_.device_name,
+			   static_cast<unsigned long long>(stats.decode_emsgsize_count),
+			   static_cast<unsigned long long>(stats.decode_ebadmsg_count),
+			   static_cast<unsigned long long>(stats.decode_eoverflow_count),
+			   static_cast<unsigned long long>(stats.decode_other_count),
+			   static_cast<unsigned long long>(stats.decode_dropped_bytes),
+			   static_cast<unsigned long long>(stats.decode_last_error_ms),
+			   static_cast<unsigned long long>(stats.decode_emsgsize_bda_data_count),
+			   static_cast<unsigned long long>(stats.decode_emsgsize_bda_data_bytes),
+			   static_cast<unsigned int>(stats.decode_last_message_type),
+			   static_cast<unsigned long long>(stats.payload_short_count),
+			   static_cast<unsigned long long>(stats.payload_dropped_bytes),
+			   static_cast<unsigned long long>(stats.payload_last_error_ms),
+			   static_cast<unsigned long long>(stats.stream_write_failure_count),
+			   static_cast<unsigned long long>(stats.stream_dropped_bytes),
+			   static_cast<unsigned long long>(stats.stream_last_error_ms));
+	}
 	protocol_.reset();
 	transport_.reset();
 	receiver_.reset();

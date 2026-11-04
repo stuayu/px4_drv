@@ -294,28 +294,10 @@ public:
 		MessageFrame frame{};
 		const int ret = DecodeMessage(buffer, actual_length, response_alignment_, frame);
 		if (ret) {
-			if (buffer && actual_length >= kHeaderSize) {
-				const auto read_u16_at = [buffer](std::size_t offset) {
-					return static_cast<std::uint16_t>(
-						static_cast<std::uint16_t>(buffer[offset]) |
-						(static_cast<std::uint16_t>(buffer[offset + 1]) << 8));
-				};
-				const std::uint16_t flags = read_u16_at(6);
-				const std::size_t fragment_offset = (flags & 4) && response_alignment_
-					? response_alignment_ + ((flags >> 8) & 3) : 0;
-				const bool fragment_header_available = fragment_offset <= actual_length - kHeaderSize;
-				const std::uint16_t fragment_type = fragment_header_available
-					? read_u16_at(fragment_offset) : 0;
-				const std::uint16_t fragment_length = fragment_header_available
-					? read_u16_at(fragment_offset + 4) : 0;
-				const std::uint16_t fragment_flags = fragment_header_available
-					? read_u16_at(fragment_offset + 6) : 0;
-				msg_log_at(PX4_LOG_DEBUG, PX4_LOG_CAT_DEMOD,
-					   "Siano frame decode failed (ret=%d, actual=%zu, align=%zu, header=%u/%u/0x%04x, fragment_offset=%zu, fragment=%u/%u/0x%04x).\n",
-					   ret, actual_length, response_alignment_, read_u16_at(0),
-					   read_u16_at(4), flags, fragment_offset, fragment_type,
-					   fragment_length, fragment_flags);
-			}
+			const std::uint16_t message_type = buffer && actual_length >= 2
+				? static_cast<std::uint16_t>(buffer[0] |
+					(static_cast<std::uint16_t>(buffer[1]) << 8)) : 0;
+			RecordDecodeError(ret, actual_length, message_type);
 			/* 実長不足はsmsusbと同様にこの転送だけを捨てる。宣言長不正や
 			 * オフセット計算のoverflowは形式破損なので上位へ失敗を伝える。 */
 			if (ret == -EMSGSIZE)
@@ -350,8 +332,10 @@ public:
 		/* Mode/lock を判定する必須フィールドが欠けた応答は、成功扱いにしない。 */
 		if ((frame.type == kGetVersionResponse && frame.payload_length < 12) ||
 		    (frame.type == kGetStatisticsExResponse && frame.payload_length < 20) ||
-		    (frame.type == kGetStatisticsResponse && frame.payload_length < 16))
+		    (frame.type == kGetStatisticsResponse && frame.payload_length < 16)) {
+			RecordPayloadError(actual_length);
 			return -EMSGSIZE;
+		}
 
 		if (frame.type == kBdaData) {
 			/* TSが一件も届かない原因を調べるため、debug時だけ選局後最初のBDA_DATAを記録する。 */
@@ -419,6 +403,37 @@ public:
 		return 0;
 	}
 
+	Protocol::Diagnostics GetDiagnostics() const noexcept
+	{
+		return {
+			decode_emsgsize_count_.load(std::memory_order_relaxed),
+			decode_ebadmsg_count_.load(std::memory_order_relaxed),
+			decode_eoverflow_count_.load(std::memory_order_relaxed),
+			decode_other_count_.load(std::memory_order_relaxed),
+			decode_dropped_bytes_.load(std::memory_order_relaxed),
+			decode_last_error_ms_.load(std::memory_order_relaxed),
+			decode_emsgsize_bda_data_count_.load(std::memory_order_relaxed),
+			decode_emsgsize_bda_data_bytes_.load(std::memory_order_relaxed),
+			decode_last_message_type_.load(std::memory_order_relaxed),
+			payload_short_count_.load(std::memory_order_relaxed),
+			payload_dropped_bytes_.load(std::memory_order_relaxed),
+			payload_last_error_ms_.load(std::memory_order_relaxed),
+			stream_write_failure_count_.load(std::memory_order_relaxed),
+			stream_dropped_bytes_.load(std::memory_order_relaxed),
+			stream_last_error_ms_.load(std::memory_order_relaxed),
+		};
+	}
+
+	void RecordStreamWriteFailure(std::size_t requested_bytes,
+				      std::size_t written_bytes) noexcept
+	{
+		stream_write_failure_count_.fetch_add(1, std::memory_order_relaxed);
+		if (written_bytes < requested_bytes)
+			stream_dropped_bytes_.fetch_add(requested_bytes - written_bytes,
+						std::memory_order_relaxed);
+		stream_last_error_ms_.store(msg_now_ms(), std::memory_order_relaxed);
+	}
+
 	bool IsLocked() const noexcept
 	{
 		std::lock_guard<std::mutex> lock(state_mutex_);
@@ -480,6 +495,40 @@ public:
 	}
 
 private:
+	void RecordDecodeError(int error, std::size_t dropped_bytes,
+			       std::uint16_t message_type) noexcept
+	{
+		switch (error) {
+		case -EMSGSIZE:
+			decode_emsgsize_count_.fetch_add(1, std::memory_order_relaxed);
+			break;
+		case -EBADMSG:
+			decode_ebadmsg_count_.fetch_add(1, std::memory_order_relaxed);
+			break;
+		case -EOVERFLOW:
+			decode_eoverflow_count_.fetch_add(1, std::memory_order_relaxed);
+			break;
+		default:
+			decode_other_count_.fetch_add(1, std::memory_order_relaxed);
+			break;
+		}
+		decode_dropped_bytes_.fetch_add(dropped_bytes, std::memory_order_relaxed);
+		decode_last_error_ms_.store(msg_now_ms(), std::memory_order_relaxed);
+		decode_last_message_type_.store(message_type, std::memory_order_relaxed);
+		if (error == -EMSGSIZE && message_type == kBdaData) {
+			decode_emsgsize_bda_data_count_.fetch_add(1, std::memory_order_relaxed);
+			decode_emsgsize_bda_data_bytes_.fetch_add(dropped_bytes,
+								std::memory_order_relaxed);
+		}
+	}
+
+	void RecordPayloadError(std::size_t dropped_bytes) noexcept
+	{
+		payload_short_count_.fetch_add(1, std::memory_order_relaxed);
+		payload_dropped_bytes_.fetch_add(dropped_bytes, std::memory_order_relaxed);
+		payload_last_error_ms_.store(msg_now_ms(), std::memory_order_relaxed);
+	}
+
 	struct Version final {
 		std::uint8_t firmware_id = 255;
 		std::uint8_t supported_protocols = 0;
@@ -686,6 +735,21 @@ private:
 	std::condition_variable response_changed_;
 	std::array<std::uint32_t, 1024> response_counts_{};
 	std::atomic<bool> first_bda_data_logged_{false};
+	std::atomic_uint64_t decode_emsgsize_count_{0};
+	std::atomic_uint64_t decode_ebadmsg_count_{0};
+	std::atomic_uint64_t decode_eoverflow_count_{0};
+	std::atomic_uint64_t decode_other_count_{0};
+	std::atomic_uint64_t decode_dropped_bytes_{0};
+	std::atomic_uint64_t decode_last_error_ms_{0};
+	std::atomic_uint64_t decode_emsgsize_bda_data_count_{0};
+	std::atomic_uint64_t decode_emsgsize_bda_data_bytes_{0};
+	std::atomic_uint16_t decode_last_message_type_{0};
+	std::atomic_uint64_t payload_short_count_{0};
+	std::atomic_uint64_t payload_dropped_bytes_{0};
+	std::atomic_uint64_t payload_last_error_ms_{0};
+	std::atomic_uint64_t stream_write_failure_count_{0};
+	std::atomic_uint64_t stream_dropped_bytes_{0};
+	std::atomic_uint64_t stream_last_error_ms_{0};
 	Version version_{};
 	std::int32_t cnr_millidb_ = 0;
 	std::chrono::steady_clock::time_point next_statistics_request_{};
@@ -725,6 +789,17 @@ int Protocol::HandleTransfer(const std::uint8_t *buffer,
 			     std::size_t actual_length) noexcept
 {
 	return impl_->HandleTransfer(buffer, actual_length);
+}
+
+Protocol::Diagnostics Protocol::GetDiagnostics() const noexcept
+{
+	return impl_->GetDiagnostics();
+}
+
+void Protocol::RecordStreamWriteFailure(std::size_t requested_bytes,
+					std::size_t written_bytes) noexcept
+{
+	impl_->RecordStreamWriteFailure(requested_bytes, written_bytes);
 }
 
 bool Protocol::IsLocked() const noexcept
