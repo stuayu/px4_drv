@@ -31,13 +31,6 @@ private:
 	int I2cRaw(std::uint8_t address, const t230c::Bytes &write, t230c::Bytes &read);
 	int TransferOut(const std::uint8_t *data, std::size_t size);
 	int TransferIn(std::uint8_t endpoint, std::uint8_t *data, std::size_t size, std::size_t &actual);
-	int PrepareUsbForInit();
-	static int StopStreamForInit(void *context);
-#ifdef _WIN32
-	static int AbortPipeForInit(void *context, std::uint8_t endpoint);
-	static int FlushPipeForInit(void *context, std::uint8_t endpoint);
-	static int ResetPipeForInit(void *context, std::uint8_t endpoint);
-#endif
 	static int UsbBulkTransfer(void *context, t230c_u8 endpoint,
 			   t230c_u8 *data, std::size_t size,
 			   std::size_t *actual, t230c_u32 timeout_ms);

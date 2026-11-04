@@ -39,9 +39,6 @@
     <ClCompile Include="..\..\..\driver\common\bridge\t230c_usb.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\driver\common\bridge\t230c_usb_recovery.c">
-      <Filter>ソース ファイル</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\..\driver\common\demod\si2168.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
@@ -171,9 +168,6 @@
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\driver\common\bridge\t230c_usb.h">
-      <Filter>ヘッダー ファイル</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\driver\common\bridge\t230c_usb_recovery.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\driver\common\ts\tsmf.h">
