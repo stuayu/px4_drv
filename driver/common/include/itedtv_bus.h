@@ -8,6 +8,10 @@
 #ifndef __ITEDTV_BUS_H__
 #define __ITEDTV_BUS_H__
 
+#if defined(_WIN32) || defined(_WIN64)
+#include <stdint.h>
+#endif
+
 #ifdef __linux__
 #include <linux/device.h>
 #include <linux/usb.h>
@@ -68,11 +72,32 @@ struct itedtv_bus {
 	struct itedtv_bus_operations ops;
 };
 
+#if defined(_WIN32) || defined(_WIN64)
+/* Interval counters for the WinUSB overlapped TS reader. */
+struct itedtv_usb_stream_stats {
+	uint64_t completed_reads;
+	uint64_t completed_bytes;
+	uint64_t short_reads;
+	uint64_t short_bytes;
+	uint64_t read_errors;
+	uint64_t read_timeouts;
+	uint64_t submit_errors;
+	uint64_t wait_timeouts;
+	uint64_t wait_errors;
+	uint32_t last_error;
+};
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 int itedtv_bus_init(struct itedtv_bus *bus);
 int itedtv_bus_term(struct itedtv_bus *bus);
+#if defined(_WIN32) || defined(_WIN64)
+/* Reads and clears the counters since the previous call. */
+int itedtv_bus_take_usb_stream_stats(struct itedtv_bus *bus,
+				     struct itedtv_usb_stream_stats *stats);
+#endif
 #ifdef __cplusplus
 }
 #endif

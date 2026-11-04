@@ -121,6 +121,7 @@ set(SHARED_CXX_SRCS
     "${HOST_SRC}/devices/pxmlt_device.cpp"
     "${HOST_SRC}/devices/t230c_device.cpp"
     "${HOST_SRC}/devices/t230c_protocol.cpp"
+    "${HOST_SRC}/devices/t230c_stream_stats.cpp"
     "${HOST_SRC}/devices/t230c_silicon.cpp"
     "${HOST_SRC}/devices/siano_device.cpp"
     "${HOST_SRC}/devices/siano_protocol.cpp"
@@ -333,6 +334,10 @@ if(BUILD_TESTING)
         "${MACOS_SRC}/common/msg.c")
     target_compile_definitions(j83b_driver_test PRIVATE _DEFAULT_SOURCE)
     add_test(NAME j83b_driver_test COMMAND j83b_driver_test)
+    add_executable(t230c_stream_stats_test
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/t230c_stream_stats_test.cpp"
+        "${HOST_SRC}/devices/t230c_stream_stats.cpp")
+    add_test(NAME t230c_stream_stats_test COMMAND t230c_stream_stats_test)
     add_executable(t230c_driver_test
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/t230c_driver_test.cpp"
         "${HOST_SRC}/devices/t230c_protocol.cpp"

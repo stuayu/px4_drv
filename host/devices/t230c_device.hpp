@@ -2,11 +2,13 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <limits>
 #include <memory>
 #include <mutex>
 
 #include "device_base.hpp"
 #include "t230c_silicon.hpp"
+#include "t230c_stream_stats.hpp"
 #include "itedtv_bus.h"
 #include "t230c_usb.h"
 
@@ -37,6 +39,9 @@ private:
 			   t230c_u8 *data, std::size_t size,
 			   std::size_t *actual, t230c_u32 timeout_ms);
 	unsigned int ControlTimeout() const;
+	void RecordCnr(std::int32_t cnr_millibel) noexcept;
+	void ResetCnrStats() noexcept;
+	void LogStreamStats(std::uint64_t now_ms, bool force) noexcept;
 	static int StreamHandler(void *context, void *data, std::uint32_t size);
 
 	std::recursive_mutex mutex_;
@@ -44,6 +49,7 @@ private:
 	std::shared_ptr<ReceiverBase::StreamBuffer> buffer_;
 	std::unique_ptr<t230c::TsSynchronizer> synchronizer_;
 	std::unique_ptr<t230c::Silicon> silicon_;
+	t230c::StreamDiagnostics stream_diagnostics_;
 	struct t230c_usb usb_core_{};
 	itedtv_bus stream_bus_ = {};
 	t230c::Deadline deadline_ = (t230c::Deadline::max)();
@@ -51,6 +57,14 @@ private:
 	unsigned int xfer_packets_ = 816;
 	unsigned int max_urbs_ = 8;
 	unsigned int receiver_packets_ = 16384;
+	std::uint64_t stats_report_ms_ = 0;
+	std::uint64_t stream_input_bytes_ = 0;
+	std::uint64_t stream_output_packets_ = 0;
+	std::uint64_t sync_discarded_bytes_ = 0;
+	std::atomic<std::uint64_t> cnr_sample_count_{0};
+	std::atomic<std::int64_t> cnr_sample_sum_{0};
+	std::atomic<std::int32_t> cnr_sample_min_{(std::numeric_limits<std::int32_t>::max)()};
+	std::atomic<std::int32_t> cnr_sample_max_{(std::numeric_limits<std::int32_t>::lowest)()};
 	bool experimental_isdbc_ = false;
 	bool receiver_open_ = false;
 	bool bus_initialized_ = false;

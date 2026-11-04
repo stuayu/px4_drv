@@ -39,7 +39,24 @@ struct itedtv_usb_context {
 	HANDLE worker_thread;
 	HANDLE startup_event;
 	LONG startup_result;
+	volatile LONG64 completed_reads;
+	volatile LONG64 completed_bytes;
+	volatile LONG64 short_reads;
+	volatile LONG64 short_bytes;
+	volatile LONG64 read_errors;
+	volatile LONG64 read_timeouts;
+	volatile LONG64 submit_errors;
+	volatile LONG64 wait_timeouts;
+	volatile LONG64 wait_errors;
+	volatile LONG last_error;
 };
+
+static void itedtv_usb_record_error(struct itedtv_usb_context *ctx,
+				    volatile LONG64 *counter, DWORD error)
+{
+	InterlockedIncrement64(counter);
+	InterlockedExchange(&ctx->last_error, (LONG)error);
+}
 
 static int winerr_to_errno(struct device *dev)
 {
@@ -340,8 +357,13 @@ unsigned __stdcall itedtv_winusb_worker(void *arg)
 		if (GetLastError() == ERROR_IO_PENDING)
 			continue;
 
-		startup_result = -winerr_to_errno(bus->dev);
-		dev_err(bus->dev, "itedtv_winusb_worker: WinUsb_ReadPipe() 1 failed. (%u, %u)\n", i, GetLastError());
+		{
+			DWORD error = GetLastError();
+			itedtv_usb_record_error(ctx, &ctx->submit_errors, error);
+			SetLastError(error);
+			startup_result = -winerr_to_errno(bus->dev);
+			dev_err(bus->dev, "itedtv_winusb_worker: WinUsb_ReadPipe() 1 failed. (%u, %u)\n", i, error);
+		}
 		works[i].can_submit = true;
 
 		if (bus->usb.streaming.fail_on_error)
@@ -379,25 +401,40 @@ unsigned __stdcall itedtv_winusb_worker(void *arg)
 		if (bus->usb.streaming.fail_on_error && !ctx->streaming)
 			break;
 		if (ret == WAIT_TIMEOUT) {
+			InterlockedIncrement64(&ctx->wait_timeouts);
 			dev_dbg(bus->dev, "itedtv_winusb_worker: timeout %u\n", idx);
 			continue;
 		} else if (ret == WAIT_FAILED) {
+			itedtv_usb_record_error(ctx, &ctx->wait_errors, GetLastError());
 			if (bus->usb.streaming.fail_on_error)
 				ctx->stream_handler(ctx->ctx, NULL, 0);
 			break;
 		}
 
 		if (WinUsb_GetOverlappedResult(winusb, &work->ol, &rlen, TRUE)) {
+			InterlockedIncrement64(&ctx->completed_reads);
+			InterlockedExchangeAdd64(&ctx->completed_bytes, (LONG64)rlen);
+			if ((size_t)rlen < work->size) {
+				InterlockedIncrement64(&ctx->short_reads);
+				InterlockedExchangeAdd64(&ctx->short_bytes, (LONG64)(work->size - rlen));
+			}
 			int handler_ret = ctx->stream_handler(ctx->ctx, work->buffer, rlen);
 			if (handler_ret && bus->usb.streaming.fail_on_error) {
 				work->can_submit = true;
 				ctx->stream_handler(ctx->ctx, NULL, 0);
 				break;
 			}
-		} else if (bus->usb.streaming.fail_on_error && GetLastError() != ERROR_SEM_TIMEOUT) {
-			work->can_submit = true;
-			ctx->stream_handler(ctx->ctx, NULL, 0);
-			break;
+		} else {
+			DWORD error = GetLastError();
+			InterlockedIncrement64(&ctx->read_errors);
+			InterlockedExchange(&ctx->last_error, (LONG)error);
+			if (error == ERROR_SEM_TIMEOUT)
+				InterlockedIncrement64(&ctx->read_timeouts);
+			if (bus->usb.streaming.fail_on_error && error != ERROR_SEM_TIMEOUT) {
+				work->can_submit = true;
+				ctx->stream_handler(ctx->ctx, NULL, 0);
+				break;
+			}
 		}
 
 		next_idx = (idx + 1) % num;
@@ -409,7 +446,11 @@ unsigned __stdcall itedtv_winusb_worker(void *arg)
 		if (GetLastError() == ERROR_IO_PENDING)
 			continue;
 
-		dev_err(bus->dev, "itedtv_winusb_worker: WinUsb_ReadPipe() 2 failed. (%u, %u)\n", idx, GetLastError());
+		{
+			DWORD error = GetLastError();
+			itedtv_usb_record_error(ctx, &ctx->submit_errors, error);
+			dev_err(bus->dev, "itedtv_winusb_worker: WinUsb_ReadPipe() 2 failed. (%u, %u)\n", idx, error);
+		}
 		work->can_submit = true;
 		if (bus->usb.streaming.fail_on_error) {
 			ctx->stream_handler(ctx->ctx, NULL, 0);
@@ -715,5 +756,26 @@ int itedtv_bus_term(struct itedtv_bus *bus)
 
 	memset(bus, 0, sizeof(*bus));
 
+	return 0;
+}
+
+int itedtv_bus_take_usb_stream_stats(struct itedtv_bus *bus,
+				     struct itedtv_usb_stream_stats *stats)
+{
+	struct itedtv_usb_context *ctx;
+
+	if (!bus || !stats || bus->type != ITEDTV_BUS_USB || !bus->usb.priv)
+		return -EINVAL;
+	ctx = bus->usb.priv;
+	stats->completed_reads = (uint64_t)InterlockedExchange64(&ctx->completed_reads, 0);
+	stats->completed_bytes = (uint64_t)InterlockedExchange64(&ctx->completed_bytes, 0);
+	stats->short_reads = (uint64_t)InterlockedExchange64(&ctx->short_reads, 0);
+	stats->short_bytes = (uint64_t)InterlockedExchange64(&ctx->short_bytes, 0);
+	stats->read_errors = (uint64_t)InterlockedExchange64(&ctx->read_errors, 0);
+	stats->read_timeouts = (uint64_t)InterlockedExchange64(&ctx->read_timeouts, 0);
+	stats->submit_errors = (uint64_t)InterlockedExchange64(&ctx->submit_errors, 0);
+	stats->wait_timeouts = (uint64_t)InterlockedExchange64(&ctx->wait_timeouts, 0);
+	stats->wait_errors = (uint64_t)InterlockedExchange64(&ctx->wait_errors, 0);
+	stats->last_error = (uint32_t)InterlockedExchange(&ctx->last_error, 0);
 	return 0;
 }

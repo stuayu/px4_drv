@@ -355,6 +355,9 @@ int T230CDevice::Init()
 	info.index = definition.index;
 	receiver_manager_.Register(info, receiver_.get());
 	initialized_ = true;
+	msg_log_at(PX4_LOG_INFO, PX4_LOG_CAT_DEVICE,
+		   "T230C device ready: host_index=%s usb_serial=%ls reader_id=%ls\n",
+		   dev_.device_name, usb_serial_number_.c_str(), GetCardReaderName().c_str());
 	return 0;
 }
 
@@ -366,8 +369,10 @@ void T230CDevice::Term()
 	SetAvailability(false);
 	{
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
-		if (bus_initialized_ && streaming_)
+		if (bus_initialized_ && streaming_) {
 			itedtv_bus_stop_streaming(&stream_bus_);
+			LogStreamStats(msg_now_ms(), true);
+		}
 		streaming_ = false;
 	}
 	receiver_.reset();
@@ -396,6 +401,137 @@ ReceiverBase *T230CDevice::GetReceiver(int id) const
 	return receiver_.get();
 }
 
+void T230CDevice::RecordCnr(std::int32_t cnr_millibel) noexcept
+{
+	if (!msg_log_get_stats_interval_ms() ||
+	    !px4_log_enabled(PX4_LOG_INFO, PX4_LOG_CAT_TS))
+		return;
+	cnr_sample_count_.fetch_add(1, std::memory_order_relaxed);
+	cnr_sample_sum_.fetch_add(cnr_millibel, std::memory_order_relaxed);
+	auto minimum = cnr_sample_min_.load(std::memory_order_relaxed);
+	while (cnr_millibel < minimum &&
+	       !cnr_sample_min_.compare_exchange_weak(minimum, cnr_millibel,
+						      std::memory_order_relaxed)) {}
+	auto maximum = cnr_sample_max_.load(std::memory_order_relaxed);
+	while (cnr_millibel > maximum &&
+	       !cnr_sample_max_.compare_exchange_weak(maximum, cnr_millibel,
+						      std::memory_order_relaxed)) {}
+}
+
+void T230CDevice::ResetCnrStats() noexcept
+{
+	cnr_sample_count_.store(0, std::memory_order_relaxed);
+	cnr_sample_sum_.store(0, std::memory_order_relaxed);
+	cnr_sample_min_.store((std::numeric_limits<std::int32_t>::max)(), std::memory_order_relaxed);
+	cnr_sample_max_.store((std::numeric_limits<std::int32_t>::lowest)(), std::memory_order_relaxed);
+}
+
+void T230CDevice::LogStreamStats(std::uint64_t now_ms, bool force) noexcept
+{
+	const std::uint32_t interval_ms = msg_log_get_stats_interval_ms();
+	if (!interval_ms || !px4_log_enabled(PX4_LOG_INFO, PX4_LOG_CAT_TS) ||
+	    (!force && now_ms >= stats_report_ms_ &&
+			     now_ms - stats_report_ms_ < interval_ms))
+		return;
+	const std::uint64_t elapsed_ms = now_ms >= stats_report_ms_ ? now_ms - stats_report_ms_ : 0;
+	stats_report_ms_ = now_ms;
+
+	const auto stats = stream_diagnostics_.TakeInterval();
+	const std::uint64_t emitted_bytes = stream_output_packets_ * T230C_TS_PACKET_SIZE;
+	const std::size_t pending_bytes = synchronizer_ ? synchronizer_->PendingSize() : 0;
+	const std::uint64_t consumed_bytes = emitted_bytes + pending_bytes;
+	const std::uint64_t sync_discarded_total = stream_input_bytes_ > consumed_bytes
+		? stream_input_bytes_ - consumed_bytes : 0;
+	const std::uint64_t sync_discarded_delta = sync_discarded_total >= sync_discarded_bytes_
+		? sync_discarded_total - sync_discarded_bytes_ : sync_discarded_total;
+	sync_discarded_bytes_ = sync_discarded_total;
+
+	const std::uint64_t cnr_count = cnr_sample_count_.exchange(0, std::memory_order_relaxed);
+	const std::int64_t cnr_sum = cnr_sample_sum_.exchange(0, std::memory_order_relaxed);
+	const std::int32_t cnr_min = cnr_sample_min_.exchange(
+		(std::numeric_limits<std::int32_t>::max)(), std::memory_order_relaxed);
+	const std::int32_t cnr_max = cnr_sample_max_.exchange(
+		(std::numeric_limits<std::int32_t>::lowest)(), std::memory_order_relaxed);
+
+	std::uint64_t winusb_completed_reads = 0;
+	std::uint64_t winusb_completed_bytes = 0;
+	std::uint64_t winusb_short_reads = 0;
+	std::uint64_t winusb_short_bytes = 0;
+	std::uint64_t winusb_read_errors = 0;
+	std::uint64_t winusb_read_timeouts = 0;
+	std::uint64_t winusb_submit_errors = 0;
+	std::uint64_t winusb_wait_timeouts = 0;
+	std::uint64_t winusb_wait_errors = 0;
+	std::uint32_t winusb_last_error = 0;
+#if defined(_WIN32) || defined(_WIN64)
+	struct itedtv_usb_stream_stats usb_stats = {};
+	const int usb_stats_ret = bus_initialized_
+		? itedtv_bus_take_usb_stream_stats(&stream_bus_, &usb_stats) : -ENODEV;
+	if (!usb_stats_ret) {
+		winusb_completed_reads = usb_stats.completed_reads;
+		winusb_completed_bytes = usb_stats.completed_bytes;
+		winusb_short_reads = usb_stats.short_reads;
+		winusb_short_bytes = usb_stats.short_bytes;
+		winusb_read_errors = usb_stats.read_errors;
+		winusb_read_timeouts = usb_stats.read_timeouts;
+		winusb_submit_errors = usb_stats.submit_errors;
+		winusb_wait_timeouts = usb_stats.wait_timeouts;
+		winusb_wait_errors = usb_stats.wait_errors;
+		winusb_last_error = usb_stats.last_error;
+	}
+#else
+	const int usb_stats_ret = -ENOSYS;
+#endif
+
+	const double cnr_average = cnr_count
+		? static_cast<double>(cnr_sum) / static_cast<double>(cnr_count) / 1000.0 : 0.0;
+	const double cnr_min_db = cnr_count ? static_cast<double>(cnr_min) / 1000.0 : 0.0;
+	const double cnr_max_db = cnr_count ? static_cast<double>(cnr_max) / 1000.0 : 0.0;
+	msg_log_at(PX4_LOG_INFO, PX4_LOG_CAT_TS,
+		   "T230C TS stats: host_index=%s elapsed_ms=%llu bytes=%llu packets=%llu cc_errors=%llu missing_mod16=%llu tei=%llu sync_discarded_bytes=%llu\n",
+		   dev_.device_name, static_cast<unsigned long long>(elapsed_ms),
+		   static_cast<unsigned long long>(stats.transfer_bytes),
+		   static_cast<unsigned long long>(stats.input_packets),
+		   static_cast<unsigned long long>(stats.cc_errors),
+		   static_cast<unsigned long long>(stats.missing_mod16),
+		   static_cast<unsigned long long>(stats.tei_packets),
+		   static_cast<unsigned long long>(sync_discarded_delta));
+	msg_log_at(PX4_LOG_INFO, PX4_LOG_CAT_TS,
+		   "T230C handler stats: host_index=%s elapsed_ms=%llu reads=%llu bytes=%llu short_reads=%llu short_bytes=%llu write_failures=%llu dropped_bytes=%llu\n",
+		   dev_.device_name, static_cast<unsigned long long>(elapsed_ms),
+		   static_cast<unsigned long long>(stats.transfer_reads),
+		   static_cast<unsigned long long>(stats.transfer_bytes),
+		   static_cast<unsigned long long>(stats.short_reads),
+		   static_cast<unsigned long long>(stats.short_bytes),
+		   static_cast<unsigned long long>(stats.stream_write_failures),
+		   static_cast<unsigned long long>(stats.stream_dropped_bytes));
+	msg_log_at(PX4_LOG_INFO, PX4_LOG_CAT_TS,
+		   "T230C WinUSB stats: host_index=%s elapsed_ms=%llu result=%d reads=%llu bytes=%llu short_reads=%llu short_bytes=%llu read_errors=%llu read_timeouts=%llu submit_errors=%llu wait_timeouts=%llu wait_errors=%llu last_error=%u\n",
+		   dev_.device_name, static_cast<unsigned long long>(elapsed_ms), usb_stats_ret,
+		   static_cast<unsigned long long>(winusb_completed_reads),
+		   static_cast<unsigned long long>(winusb_completed_bytes),
+		   static_cast<unsigned long long>(winusb_short_reads),
+		   static_cast<unsigned long long>(winusb_short_bytes),
+		   static_cast<unsigned long long>(winusb_read_errors),
+		   static_cast<unsigned long long>(winusb_read_timeouts),
+		   static_cast<unsigned long long>(winusb_submit_errors),
+		   static_cast<unsigned long long>(winusb_wait_timeouts),
+		   static_cast<unsigned long long>(winusb_wait_errors),
+		   static_cast<unsigned int>(winusb_last_error));
+	msg_log_at(PX4_LOG_INFO, PX4_LOG_CAT_TS,
+		   "T230C CNR stats: host_index=%s elapsed_ms=%llu samples=%llu avg=%.2f min=%.2f max=%.2f\n",
+		   dev_.device_name, static_cast<unsigned long long>(elapsed_ms),
+		   static_cast<unsigned long long>(cnr_count), cnr_average, cnr_min_db, cnr_max_db);
+	for (const auto &pid : stats.pids) {
+		msg_log_at(PX4_LOG_INFO, PX4_LOG_CAT_TS,
+			   "T230C PID stats: host_index=%s pid=0x%04x cc_errors=%llu missing_mod16=%llu tei=%llu\n",
+			   dev_.device_name, static_cast<unsigned int>(pid.pid),
+			   static_cast<unsigned long long>(pid.cc_errors),
+			   static_cast<unsigned long long>(pid.missing_mod16),
+			   static_cast<unsigned long long>(pid.tei_packets));
+	}
+}
+
 /* 転送層からの失敗通知では上位に知らせるだけで、worker 自身を join しない。 */
 int T230CDevice::StreamHandler(void *context, void *data, std::uint32_t size)
 {
@@ -403,18 +539,67 @@ int T230CDevice::StreamHandler(void *context, void *data, std::uint32_t size)
 	if (!data) {
 		device.stream_failed_ = true;
 		device.buffer_->NotifyStreamFailure();
+		device.LogStreamStats(msg_now_ms(), true);
 		return 0;
+	}
+	const bool collect_stats = msg_log_get_stats_interval_ms() &&
+		px4_log_enabled(PX4_LOG_INFO, PX4_LOG_CAT_TS);
+	if (collect_stats) {
+		device.stream_input_bytes_ += size;
+		device.stream_diagnostics_.RecordTransfer(size,
+			device.stream_bus_.usb.streaming.urb_buffer_size);
 	}
 	try {
 		device.synchronizer_->Push(static_cast<std::uint8_t *>(data), size,
 			[&device](const std::uint8_t *packet) {
+				const bool collect = msg_log_get_stats_interval_ms() &&
+					px4_log_enabled(PX4_LOG_INFO, PX4_LOG_CAT_TS);
+				if (collect)
+					++device.stream_output_packets_;
+				t230c::PacketEvent event{};
+				if (collect && device.stream_diagnostics_.ObservePacket(packet, msg_now_ms(), event)) {
+					if (event.type == t230c::PacketEventType::continuity_error) {
+						const char *missing = event.missing_count_ambiguous ? "ambiguous" : nullptr;
+						if (missing) {
+							msg_log_at(PX4_LOG_INFO, PX4_LOG_CAT_TS,
+								   "T230C TS event: host_index=%s type=CC pid=0x%04x previous=%u expected=%u current=%u delta=%u missing_mod16=%s duplicate_payload=%u timestamp_ms=%llu\n",
+								   device.dev_.device_name, static_cast<unsigned int>(event.pid),
+								   static_cast<unsigned int>(event.previous_cc),
+								   static_cast<unsigned int>(event.expected_cc),
+								   static_cast<unsigned int>(event.current_cc),
+								   static_cast<unsigned int>(event.cc_delta), missing,
+								   event.duplicate_payload ? 1U : 0U,
+								   static_cast<unsigned long long>(event.timestamp_ms));
+						} else {
+							msg_log_at(PX4_LOG_INFO, PX4_LOG_CAT_TS,
+								   "T230C TS event: host_index=%s type=CC pid=0x%04x previous=%u expected=%u current=%u delta=%u missing_mod16=%u duplicate_payload=%u timestamp_ms=%llu\n",
+								   device.dev_.device_name, static_cast<unsigned int>(event.pid),
+								   static_cast<unsigned int>(event.previous_cc),
+								   static_cast<unsigned int>(event.expected_cc),
+								   static_cast<unsigned int>(event.current_cc),
+								   static_cast<unsigned int>(event.cc_delta),
+								   static_cast<unsigned int>(event.missing_mod16),
+								   event.duplicate_payload ? 1U : 0U,
+								   static_cast<unsigned long long>(event.timestamp_ms));
+						}
+					} else {
+						msg_log_at(PX4_LOG_INFO, PX4_LOG_CAT_TS,
+							   "T230C TS event: host_index=%s type=TEI pid=0x%04x cc=%u timestamp_ms=%llu\n",
+							   device.dev_.device_name, static_cast<unsigned int>(event.pid),
+							   static_cast<unsigned int>(event.current_cc),
+							   static_cast<unsigned long long>(event.timestamp_ms));
+					}
+				}
 				std::size_t length = 188;
-				device.buffer_->Write(packet, length);
+				const bool written = device.buffer_->Write(packet, length);
+				if (collect)
+					device.stream_diagnostics_.RecordWrite(written, 188, length);
 			});
 	} catch (const std::bad_alloc &) {
 		return -ENOMEM;
 	}
 	device.buffer_->NotifyWrite();
+	device.LogStreamStats(msg_now_ms(), false);
 	return 0;
 }
 
@@ -597,6 +782,8 @@ int T230CDevice::Receiver::ReadStat(command::StatType type, std::int32_t &value)
 		return -ENODEV;
 	bool locked = false;
 	int ret = parent_.silicon_->ReadLock(locked, value, parent_.deadline_);
+	if (!ret && locked)
+		parent_.RecordCnr(value);
 	return ret ? ret : (locked ? 0 : -EAGAIN);
 }
 
@@ -613,6 +800,7 @@ int T230CDevice::Receiver::StopUsbStream()
 	if (parent_.bus_initialized_ && parent_.streaming_)
 		itedtv_bus_stop_streaming(&parent_.stream_bus_);
 	parent_.streaming_ = false;
+	parent_.LogStreamStats(msg_now_ms(), true);
 	if (parent_.synchronizer_)
 		parent_.synchronizer_->Reset();
 	return ret;
@@ -624,6 +812,20 @@ int T230CDevice::Receiver::StartUsbStream()
 	if (parent_.streaming_)
 		return parent_.stream_failed_ ? -EIO : 0;
 	parent_.synchronizer_->Reset();
+	if (msg_log_get_stats_interval_ms() && px4_log_enabled(PX4_LOG_INFO, PX4_LOG_CAT_TS)) {
+		parent_.stream_diagnostics_.Reset();
+		parent_.stream_input_bytes_ = 0;
+		parent_.stream_output_packets_ = 0;
+		parent_.sync_discarded_bytes_ = 0;
+	}
+	parent_.stats_report_ms_ = msg_now_ms();
+	parent_.ResetCnrStats();
+#if defined(_WIN32) || defined(_WIN64)
+	if (parent_.bus_initialized_) {
+		struct itedtv_usb_stream_stats discarded_stats = {};
+		(void)itedtv_bus_take_usb_stream_stats(&parent_.stream_bus_, &discarded_stats);
+	}
+#endif
 	parent_.stream_failed_ = false;
 	const std::uint8_t stop[] = {0x37, 0, 0};
 	int ret = parent_.TransferOut(stop, sizeof(stop));
@@ -632,6 +834,12 @@ int T230CDevice::Receiver::StartUsbStream()
 	parent_.stream_bus_.usb.streaming.urb_buffer_size = parent_.xfer_packets_ * 188;
 	parent_.stream_bus_.usb.streaming.urb_num = parent_.max_urbs_;
 	parent_.stream_bus_.usb.ctrl_timeout = parent_.ControlTimeout();
+	msg_log_at(PX4_LOG_INFO, PX4_LOG_CAT_DEVICE,
+		   "T230C stream config: host_index=%s endpoint=0x%02x urbs=%u urb_bytes=%u packets_per_urb=%u receiver_packets=%u\n",
+		   parent_.dev_.device_name, parent_.stream_bus_.usb.streaming.endpoint,
+		   parent_.stream_bus_.usb.streaming.urb_num,
+		   parent_.stream_bus_.usb.streaming.urb_buffer_size,
+		   parent_.xfer_packets_, parent_.receiver_packets_);
 	if (!parent_.stream_bus_.usb.ctrl_timeout)
 		return -ETIMEDOUT;
 	ret = itedtv_bus_start_streaming(&parent_.stream_bus_, StreamHandler, &parent_);

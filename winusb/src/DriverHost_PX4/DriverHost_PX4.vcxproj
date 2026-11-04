@@ -279,6 +279,7 @@
     <ClCompile Include="..\..\..\host\devices\isdbt2071_device.cpp" />
     <ClCompile Include="..\..\..\host\devices\t230c_device.cpp" />
     <ClCompile Include="..\..\..\host\devices\t230c_protocol.cpp" />
+    <ClCompile Include="..\..\..\host\devices\t230c_stream_stats.cpp" />
     <ClCompile Include="..\..\..\host\devices\t230c_silicon.cpp" />
     <ClCompile Include="..\..\..\host\devices\siano_device.cpp" />
     <ClCompile Include="..\..\..\host\devices\siano_protocol.cpp" />
@@ -331,6 +332,7 @@
     <ClInclude Include="..\..\..\host\devices\isdbt2071_device.hpp" />
     <ClInclude Include="..\..\..\host\devices\t230c_device.hpp" />
     <ClInclude Include="..\..\..\host\devices\t230c_protocol.hpp" />
+    <ClInclude Include="..\..\..\host\devices\t230c_stream_stats.hpp" />
     <ClInclude Include="..\..\..\host\devices\t230c_silicon.hpp" />
     <ClInclude Include="..\..\..\driver\common\bridge\t230c_usb.h" />
     <ClInclude Include="..\..\..\driver\common\demod\si2168.h" />
