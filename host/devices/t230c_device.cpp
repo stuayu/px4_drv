@@ -333,7 +333,7 @@ int T230CDevice::Init()
 	stream_bus_.usb.ctrl_timeout = 2000;
 	stream_bus_.usb.streaming.endpoint = 0x82;
 	stream_bus_.usb.streaming.fail_on_error = true;
-	stream_bus_.usb.streaming.no_raw_io = true;
+	stream_bus_.usb.streaming.no_raw_io = util::wtob(config.Get(L"NoRawIo", L"false"));
 	int ret = itedtv_bus_init(&stream_bus_);
 	if (ret)
 		return ret;
@@ -835,11 +835,14 @@ int T230CDevice::Receiver::StartUsbStream()
 	parent_.stream_bus_.usb.streaming.urb_num = parent_.max_urbs_;
 	parent_.stream_bus_.usb.ctrl_timeout = parent_.ControlTimeout();
 	msg_log_at(PX4_LOG_INFO, PX4_LOG_CAT_DEVICE,
-		   "T230C stream config: host_index=%s endpoint=0x%02x urbs=%u urb_bytes=%u packets_per_urb=%u receiver_packets=%u\n",
+		   "T230C stream config: host_index=%s endpoint=0x%02x urbs=%u urb_bytes=%u packets_per_urb=%u no_raw_io=%u max_bulk_size=%u receiver_packets=%u\n",
 		   parent_.dev_.device_name, parent_.stream_bus_.usb.streaming.endpoint,
 		   parent_.stream_bus_.usb.streaming.urb_num,
 		   parent_.stream_bus_.usb.streaming.urb_buffer_size,
-		   parent_.xfer_packets_, parent_.receiver_packets_);
+		   parent_.xfer_packets_,
+		   parent_.stream_bus_.usb.streaming.no_raw_io ? 1U : 0U,
+		   parent_.stream_bus_.usb.max_bulk_size,
+		   parent_.receiver_packets_);
 	if (!parent_.stream_bus_.usb.ctrl_timeout)
 		return -ETIMEDOUT;
 	ret = itedtv_bus_start_streaming(&parent_.stream_bus_, StreamHandler, &parent_);

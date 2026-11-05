@@ -33,6 +33,8 @@ struct Device {
 	std::string interface_guid;
 	unsigned vid = 0, pid = 0;
 	unsigned xfer_packets = 0;
+	bool has_no_raw_io = false;
+	bool no_raw_io = true;
 	std::set<std::string> systems;
 	bool operator<(const Device &o) const
 	{
@@ -88,6 +90,11 @@ std::vector<Device> LoadIni(const std::string &path)
 			d.pid = std::stoul(value, nullptr, 0);
 		else if (section == def + ".Config" && key == "XferPackets")
 			d.xfer_packets = std::stoul(value, nullptr, 0);
+		else if (section == def + ".Config" && key == "NoRawIo")
+		{
+			d.has_no_raw_io = true;
+			d.no_raw_io = Upper(value) == "TRUE" || value == "1";
+		}
 		else if (section.find(".Receiver") != std::string::npos && key == "System") {
 			std::stringstream ss(value);
 			std::string sys;
@@ -158,12 +165,23 @@ int main()
 		std::pair<const char *, const std::vector<Device> *>{"WinUSB", &win}}) {
 		bool found_t230c = false;
 		for (const auto &d : *devices) {
-			if (d.type != "T230C")
+			if (d.type != "T230C") {
+				if (d.has_no_raw_io) {
+					std::fprintf(stderr, "%s %s has T230C-only NoRawIo config\n",
+						os_name, d.type.c_str());
+					ok = false;
+				}
 				continue;
+			}
 			found_t230c = true;
 			if (d.xfer_packets != 22) {
 				std::fprintf(stderr, "%s T230C XferPackets=%u, expected 22\n",
 					os_name, d.xfer_packets);
+				ok = false;
+			}
+			if (!d.has_no_raw_io || d.no_raw_io) {
+				std::fprintf(stderr, "%s T230C NoRawIo=%s, expected false\n",
+					os_name, d.has_no_raw_io ? (d.no_raw_io ? "true" : "false") : "missing");
 				ok = false;
 			}
 		}
