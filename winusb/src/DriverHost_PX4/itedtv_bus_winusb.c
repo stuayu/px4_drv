@@ -503,7 +503,6 @@ static int itedtv_usb_start_streaming(struct itedtv_bus *bus, itedtv_bus_stream_
 	u32 buf_size, requested_buf_size, num;
 	struct itedtv_usb_context *ctx = bus->usb.priv;
 	struct itedtv_usb_work *works;
-	WINUSB_INTERFACE_HANDLE winusb = bus->usb.dev->winusb;
 	UCHAR endpoint = bus->usb.streaming.endpoint ? bus->usb.streaming.endpoint : 0x84;
 
 	if (!stream_handler)
@@ -529,18 +528,10 @@ static int itedtv_usb_start_streaming(struct itedtv_bus *bus, itedtv_bus_stream_
 	if (!ctx->no_raw_io && (buf_size % bus->usb.max_bulk_size))
 		buf_size += bus->usb.max_bulk_size - (buf_size % bus->usb.max_bulk_size);
 
-	if (endpoint == 0x82) {
-		ULONG max_transfer_size = 0;
-		ULONG max_transfer_size_len = sizeof(max_transfer_size);
-		BOOL max_transfer_ok = WinUsb_GetPipePolicy(winusb, endpoint, MAXIMUM_TRANSFER_SIZE,
-									 &max_transfer_size_len, &max_transfer_size);
-		DWORD max_transfer_error = max_transfer_ok ? ERROR_SUCCESS : GetLastError();
-		dev_info(bus->dev,
-			 "WinUSB stream pipe: endpoint=0x%02x RAW_IO=%u urbs=%u requested_bytes=%u transfer_bytes=%u max_packet=%u max_transfer=%lu query_ok=%u query_error=%lu\n",
-			 endpoint, ctx->no_raw_io ? 0U : 1U, num, requested_buf_size, buf_size,
-			 bus->usb.max_bulk_size, max_transfer_size, max_transfer_ok ? 1U : 0U,
-			 max_transfer_error);
-	}
+	dev_dbg(bus->dev,
+		"WinUSB stream pipe: endpoint=0x%02x RAW_IO=%u urbs=%u requested_bytes=%u transfer_bytes=%u max_packet=%u\n",
+		endpoint, ctx->no_raw_io ? 0U : 1U, num, requested_buf_size, buf_size,
+		bus->usb.max_bulk_size);
 
 	if (ctx->works && num != ctx->num_works) {
 		itedtv_usb_free_work_buffers(ctx);

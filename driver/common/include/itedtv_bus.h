@@ -65,8 +65,8 @@ struct itedtv_bus {
 				/* T230C はFX2の受信overflowを避けるため有効化する。IT930xの転送長は従来どおり、Sianoの0x2000 byteは512 byte境界のままにする。 */
 				bool align_stream_buffer_to_packet_size;
 				bool fail_on_error;
-				bool no_dma;	// for Linux
-				bool no_raw_io;	// for Windows(WinUSB)
+				bool no_dma;	/* Linux 版で使用する。 */
+				bool no_raw_io;	/* Windows の WinUSB 版で使用する。 */
 			} streaming;
 			void *priv;
 		} usb;
@@ -75,7 +75,7 @@ struct itedtv_bus {
 };
 
 #if defined(_WIN32) || defined(_WIN64)
-/* Interval counters for the WinUSB overlapped TS reader. */
+/* WinUSB のオーバーラップ TS 読み出しに関する前回取得以降のカウンター。 */
 struct itedtv_usb_stream_stats {
 	uint64_t completed_reads;
 	uint64_t completed_bytes;
@@ -96,7 +96,7 @@ extern "C" {
 int itedtv_bus_init(struct itedtv_bus *bus);
 int itedtv_bus_term(struct itedtv_bus *bus);
 #if defined(_WIN32) || defined(_WIN64)
-/* Reads and clears the counters since the previous call. */
+/* 前回の呼び出し以降のカウンターを読み出して初期化する。 */
 int itedtv_bus_take_usb_stream_stats(struct itedtv_bus *bus,
 				     struct itedtv_usb_stream_stats *stats);
 #endif
