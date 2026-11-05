@@ -62,6 +62,8 @@ struct itedtv_bus {
 				u32 urb_num;
 				/* 0 は既存機種の 0x84。別機種は USB descriptor の値を指定する。 */
 				u8 endpoint;
+				/* T230C はFX2の受信overflowを避けるため有効化する。IT930xの転送長は従来どおり、Sianoの0x2000 byteは512 byte境界のままにする。 */
+				bool align_stream_buffer_to_packet_size;
 				bool fail_on_error;
 				bool no_dma;	// for Linux
 				bool no_raw_io;	// for Windows(WinUSB)

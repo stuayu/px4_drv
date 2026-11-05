@@ -287,6 +287,23 @@ static int itedtv_usb_start_streaming(struct itedtv_bus *bus,
 		pthread_mutex_unlock(&ctx->lock);
 		return -EINVAL;
 	}
+	if (bus->usb.streaming.align_stream_buffer_to_packet_size) {
+		if (bus->usb.max_bulk_size <= 0) {
+			pthread_mutex_unlock(&ctx->lock);
+			return -EINVAL;
+		}
+		const uint32_t packet_size = (uint32_t)bus->usb.max_bulk_size;
+		const uint32_t remainder = buf_size % packet_size;
+		if (remainder) {
+			const uint32_t padding = packet_size - remainder;
+			if (padding > (uint32_t)INT_MAX - buf_size) {
+				pthread_mutex_unlock(&ctx->lock);
+				return -EINVAL;
+			}
+			/* T230CのFX2は512 byte単位でTSを送るため、最後のUSB packetも収まる長さにする。 */
+			buf_size += padding;
+		}
+	}
 
 	if (num > 64)
 		num = 64;

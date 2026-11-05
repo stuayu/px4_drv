@@ -748,6 +748,48 @@ static bool run_t230c_handler_failure(void)
 	return ok && freed_active == 0;
 }
 
+static bool run_transfer_size_case(unsigned char endpoint, uint32_t requested_size,
+				   bool align_to_packet_size, int expected_size)
+{
+	struct device device;
+	struct usb_device usb;
+	struct itedtv_bus bus;
+	reset_failure_state();
+	if (!init_bus(&bus, &device, &usb, 1))
+		return false;
+	bus.usb.streaming.endpoint = endpoint;
+	bus.usb.streaming.urb_buffer_size = requested_size;
+	bus.usb.streaming.align_stream_buffer_to_packet_size = align_to_packet_size;
+	if (itedtv_bus_start_streaming(&bus, discard_stream, NULL)) {
+		itedtv_bus_term(&bus);
+		return false;
+	}
+	pthread_mutex_lock(&mock_lock);
+	struct libusb_transfer *transfer = active[0];
+	bool ok = transfer && transfer->endpoint == endpoint && transfer->length == expected_size;
+	int actual_size = transfer ? transfer->length : -1;
+	pthread_mutex_unlock(&mock_lock);
+	if (!ok)
+		fprintf(stderr, "endpoint=0x%02x transfer size: expected=%d actual=%d\n",
+			endpoint, expected_size, actual_size);
+	ok = !itedtv_bus_stop_streaming(&bus) && ok;
+	itedtv_bus_term(&bus);
+	return ok && pending_count() == 0;
+}
+
+/* 22 packet (4136 byte) のT230C要求は512 byte境界まで受信できる長さで投入する。 */
+static bool run_t230c_transfer_size(void)
+{
+	return run_transfer_size_case(0x82, 22 * 188, true, 4608);
+}
+
+/* IT930xのTS packet数由来の長さと、512 byte整列済みのSiano長は変えない。 */
+static bool run_other_transfer_sizes(void)
+{
+	return run_transfer_size_case(0x84, 188 * 816, false, 188 * 816) &&
+		run_transfer_size_case(0x81, 0x2000, false, 0x2000);
+}
+
 int main(void)
 {
 	bool first = run_case(0);
@@ -765,8 +807,10 @@ int main(void)
 	bool notify_in_flight = run_failure_notification_in_flight();
 	bool t230c_failures = run_t230c_stream_failures();
 	bool t230c_handler_failure = run_t230c_handler_failure();
+	bool t230c_transfer_size = run_t230c_transfer_size();
+	bool other_transfer_sizes = run_other_transfer_sizes();
 	bool ok = first && later && resize && callback && control && allocation && oom && stall &&
-		notify_stall && notify_unplug && notify_resubmit && stop_quiet && notify_in_flight && t230c_failures && t230c_handler_failure;
+		notify_stall && notify_unplug && notify_resubmit && stop_quiet && notify_in_flight && t230c_failures && t230c_handler_failure && t230c_transfer_size && other_transfer_sizes;
 	if (ok)
 		puts("itedtv_usb_failure_test: passed");
 	return ok ? 0 : 1;

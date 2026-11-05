@@ -332,6 +332,7 @@ int T230CDevice::Init()
 	stream_bus_.usb.dev = &usb_dev_;
 	stream_bus_.usb.ctrl_timeout = 2000;
 	stream_bus_.usb.streaming.endpoint = 0x82;
+	stream_bus_.usb.streaming.align_stream_buffer_to_packet_size = true;
 	stream_bus_.usb.streaming.fail_on_error = true;
 	stream_bus_.usb.streaming.no_raw_io = util::wtob(config.Get(L"NoRawIo", L"false"));
 	int ret = itedtv_bus_init(&stream_bus_);
