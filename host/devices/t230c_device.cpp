@@ -557,9 +557,9 @@ int T230CDevice::StreamHandler(void *context, void *data, std::uint32_t size)
 					px4_log_enabled(PX4_LOG_INFO, PX4_LOG_CAT_TS);
 				if (collect)
 					++device.stream_output_packets_;
-				t230c::PacketEvent event{};
+				px4::ts::PacketEvent event{};
 				if (collect && device.stream_diagnostics_.ObservePacket(packet, msg_now_ms(), event)) {
-					if (event.type == t230c::PacketEventType::continuity_error) {
+					if (event.type == px4::ts::PacketEventType::continuity_error) {
 						const char *missing = event.missing_count_ambiguous ? "ambiguous" : nullptr;
 						if (missing) {
 							msg_log_at(PX4_LOG_INFO, PX4_LOG_CAT_TS,

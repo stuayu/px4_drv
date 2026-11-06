@@ -1,4 +1,4 @@
-#include "t230c_stream_stats.hpp"
+#include "../../host/core/ts_stream_diagnostics.hpp"
 
 #include <array>
 #include <cstdint>
@@ -23,7 +23,7 @@ Packet MakePacket(std::uint16_t pid, std::uint8_t cc, std::uint8_t payload)
 
 int main()
 {
-    using namespace px4::t230c;
+    using namespace px4::ts;
     constexpr std::uint16_t pid = 0x0123;
     StreamDiagnostics diagnostics;
     diagnostics.Reset();

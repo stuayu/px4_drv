@@ -48,6 +48,7 @@ struct itedtv_usb_context {
 	volatile LONG64 submit_errors;
 	volatile LONG64 wait_timeouts;
 	volatile LONG64 wait_errors;
+	volatile LONG64 max_completion_interval_us;
 	volatile LONG last_error;
 };
 
@@ -56,6 +57,17 @@ static void itedtv_usb_record_error(struct itedtv_usb_context *ctx,
 {
 	InterlockedIncrement64(counter);
 	InterlockedExchange(&ctx->last_error, (LONG)error);
+}
+
+static void itedtv_usb_record_max(volatile LONG64 *maximum, LONG64 value)
+{
+	LONG64 current = InterlockedCompareExchange64(maximum, 0, 0);
+	while (value > current) {
+		LONG64 previous = InterlockedCompareExchange64(maximum, value, current);
+		if (previous == current)
+			break;
+		current = previous;
+	}
 }
 
 static int winerr_to_errno(struct device *dev)
@@ -330,6 +342,9 @@ unsigned __stdcall itedtv_winusb_worker(void *arg)
 	WINUSB_INTERFACE_HANDLE winusb;
 	UCHAR raw_io;
 	int startup_result = 0;
+	LARGE_INTEGER qpc_frequency = { 0 };
+	LARGE_INTEGER previous_completion = { 0 };
+	BOOL have_previous_completion = FALSE;
 
 	dev_dbg(bus->dev, "itedtv_winusb_worker: start\n");
 
@@ -337,6 +352,8 @@ unsigned __stdcall itedtv_winusb_worker(void *arg)
 	works = ctx->works;
 	winusb = bus->usb.dev->winusb;
 	raw_io = (ctx->no_raw_io) ? 0 : 1;
+	if (bus->usb.streaming.measure_stream_timing)
+		QueryPerformanceFrequency(&qpc_frequency);
 
 	if (!WinUsb_SetPipePolicy(winusb, (bus->usb.streaming.endpoint ? bus->usb.streaming.endpoint : 0x84), RAW_IO, sizeof(raw_io), &raw_io)) {
 		startup_result = -winerr_to_errno(bus->dev);
@@ -412,6 +429,18 @@ unsigned __stdcall itedtv_winusb_worker(void *arg)
 		}
 
 		if (WinUsb_GetOverlappedResult(winusb, &work->ol, &rlen, TRUE)) {
+			LARGE_INTEGER completion_time = { 0 };
+			/* worker が完了イベントを処理した時刻の間隔を測る。USB stack 内の完了時刻そのものではない。 */
+			if (bus->usb.streaming.measure_stream_timing &&
+			    qpc_frequency.QuadPart > 0 && QueryPerformanceCounter(&completion_time)) {
+				if (have_previous_completion && completion_time.QuadPart >= previous_completion.QuadPart) {
+					const LONG64 interval_us = (LONG64)((completion_time.QuadPart -
+						previous_completion.QuadPart) * 1000000LL / qpc_frequency.QuadPart);
+					itedtv_usb_record_max(&ctx->max_completion_interval_us, interval_us);
+				}
+				previous_completion = completion_time;
+				have_previous_completion = TRUE;
+			}
 			InterlockedIncrement64(&ctx->completed_reads);
 			InterlockedExchangeAdd64(&ctx->completed_bytes, (LONG64)rlen);
 			if ((size_t)rlen < work->size) {
@@ -783,6 +812,8 @@ int itedtv_bus_take_usb_stream_stats(struct itedtv_bus *bus,
 	stats->submit_errors = (uint64_t)InterlockedExchange64(&ctx->submit_errors, 0);
 	stats->wait_timeouts = (uint64_t)InterlockedExchange64(&ctx->wait_timeouts, 0);
 	stats->wait_errors = (uint64_t)InterlockedExchange64(&ctx->wait_errors, 0);
+	stats->max_worker_observed_completion_interval_us =
+		(uint64_t)InterlockedExchange64(&ctx->max_completion_interval_us, 0);
 	stats->last_error = (uint32_t)InterlockedExchange(&ctx->last_error, 0);
 	return 0;
 }

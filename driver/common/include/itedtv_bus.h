@@ -65,6 +65,8 @@ struct itedtv_bus {
 				/* T230C はFX2の受信overflowを避けるため有効化する。IT930xの転送長は従来どおり、Sianoの0x2000 byteは512 byte境界のままにする。 */
 				bool align_stream_buffer_to_packet_size;
 				bool fail_on_error;
+				/* WinUSB worker がread完了を処理した間隔を診断する。通常は無効。 */
+				bool measure_stream_timing;
 				bool no_dma;	/* Linux 版で使用する。 */
 				bool no_raw_io;	/* Windows の WinUSB 版で使用する。 */
 			} streaming;
@@ -86,6 +88,7 @@ struct itedtv_usb_stream_stats {
 	uint64_t submit_errors;
 	uint64_t wait_timeouts;
 	uint64_t wait_errors;
+	uint64_t max_worker_observed_completion_interval_us;
 	uint32_t last_error;
 };
 #endif

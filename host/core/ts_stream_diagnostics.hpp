@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace px4::t230c {
+namespace px4::ts {
 
 enum class PacketEventType { continuity_error, transport_error };
 
@@ -43,7 +43,7 @@ struct StreamStatsSnapshot {
 	std::vector<PidStats> pids;
 };
 
-/* Called by the single T230C TS worker; snapshots reset interval totals only. */
+/* Single TS worker owns packet continuity; interval snapshots preserve it. */
 class StreamDiagnostics final {
 public:
 	void Reset() noexcept;
@@ -65,4 +65,4 @@ private:
 	StreamStatsSnapshot window_{};
 };
 
-} // namespace px4::t230c
+} // namespace px4::ts

@@ -8,7 +8,7 @@
 
 #include "device_base.hpp"
 #include "t230c_silicon.hpp"
-#include "t230c_stream_stats.hpp"
+#include "../core/ts_stream_diagnostics.hpp"
 #include "itedtv_bus.h"
 #include "t230c_usb.h"
 
@@ -49,7 +49,7 @@ private:
 	std::shared_ptr<ReceiverBase::StreamBuffer> buffer_;
 	std::unique_ptr<t230c::TsSynchronizer> synchronizer_;
 	std::unique_ptr<t230c::Silicon> silicon_;
-	t230c::StreamDiagnostics stream_diagnostics_;
+	ts::StreamDiagnostics stream_diagnostics_;
 	struct t230c_usb usb_core_{};
 	itedtv_bus stream_bus_ = {};
 	t230c::Deadline deadline_ = (t230c::Deadline::max)();

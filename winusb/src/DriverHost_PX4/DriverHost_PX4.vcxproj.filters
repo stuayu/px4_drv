@@ -138,7 +138,7 @@
     <ClCompile Include="..\..\..\host\devices\t230c_protocol.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\host\devices\t230c_stream_stats.cpp">
+    <ClCompile Include="..\..\..\host\core\ts_stream_diagnostics.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\host\devices\t230c_silicon.cpp">
@@ -277,7 +277,7 @@
     </ClInclude>
     <ClInclude Include="..\..\..\host\devices\t230c_device.hpp"><Filter>ヘッダー ファイル</Filter></ClInclude>
     <ClInclude Include="..\..\..\host\devices\t230c_protocol.hpp"><Filter>ヘッダー ファイル</Filter></ClInclude>
-    <ClInclude Include="..\..\..\host\devices\t230c_stream_stats.hpp"><Filter>ヘッダー ファイル</Filter></ClInclude>
+    <ClInclude Include="..\..\..\host\core\ts_stream_diagnostics.hpp"><Filter>ヘッダー ファイル</Filter></ClInclude>
     <ClInclude Include="..\..\..\host\devices\t230c_silicon.hpp"><Filter>ヘッダー ファイル</Filter></ClInclude>
     <ClInclude Include="..\..\..\host\devices\siano_device.hpp"><Filter>ヘッダー ファイル</Filter></ClInclude>
     <ClInclude Include="..\..\..\host\devices\siano_protocol.hpp"><Filter>ヘッダー ファイル</Filter></ClInclude>

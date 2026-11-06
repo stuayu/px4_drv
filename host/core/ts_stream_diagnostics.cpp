@@ -1,8 +1,8 @@
-#include "t230c_stream_stats.hpp"
+#include "ts_stream_diagnostics.hpp"
 
 #include <algorithm>
 
-namespace px4::t230c {
+namespace px4::ts {
 namespace {
 constexpr std::uint8_t kSyncByte = 0x47;
 constexpr std::uint16_t kNullPid = 0x1fff;
@@ -168,4 +168,4 @@ StreamStatsSnapshot StreamDiagnostics::TakeInterval()
 	return snapshot;
 }
 
-} // namespace px4::t230c
+} // namespace px4::ts
