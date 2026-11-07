@@ -183,6 +183,15 @@ int main()
 	std::this_thread::sleep_for(std::chrono::milliseconds(120));
 	require(protocol.ReadCnrMilliDb(cnr_millidb) == 0);
 	require(cnr_millidb == 13000);
+	// GetSignalLevel を約10Hzで呼んでも、steady-stateのbulk-IN統計要求を連発しない。
+	require(transport.statistics_requests == requests_before_refresh);
+	std::this_thread::sleep_for(std::chrono::milliseconds(4200));
+	require(protocol.ReadCnrMilliDb(cnr_millidb) == 0);
+	require(cnr_millidb == 13000);
+	require(transport.statistics_requests == requests_before_refresh);
+	std::this_thread::sleep_for(std::chrono::milliseconds(900));
+	require(protocol.ReadCnrMilliDb(cnr_millidb) == 0);
+	require(cnr_millidb == 13000);
 	require(transport.statistics_requests > requests_before_refresh);
 
 	{

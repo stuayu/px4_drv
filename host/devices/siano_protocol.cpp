@@ -54,7 +54,10 @@ constexpr std::uint32_t kIsdbtSampleRate = 12000000;
 constexpr std::uint32_t kCatchAllPid = 0x2000;
 constexpr std::uint32_t kFirmwareModeNone = 255;
 constexpr std::uint32_t kFirmwareModeIsdbt = 6;
-constexpr std::uint32_t kTunePollIntervalMs = 100; // upstream sms DVB driver と同じく統計要求を最大 10 Hz に抑える。
+constexpr std::uint32_t kTunePollIntervalMs = 100; // 選局中のlock確認間隔。
+/* 4波30分実測で0x028d要求の31ms後にworker間隔32.031/33.090msとCC13/22件を確認。
+ * 1Hz refreshでもsignal有効runにCC1件、無効runは0件だったため、steady-state更新を5秒周期にする。 */
+constexpr std::uint32_t kStatisticsRefreshIntervalMs = 5000;
 constexpr std::uint32_t kFirmwareStartWaitMs = 400; // Siano RIO のファームウェア起動後に置く待機時間。
 
 void WriteLe16(std::uint8_t *p, std::uint16_t value) noexcept
@@ -449,10 +452,9 @@ public:
 			if (disconnected_)
 				return -ENODEV;
 			if (std::chrono::steady_clock::now() >= next_statistics_request_) {
-				/* Linux Siano checks lock/statistics at most 10 Hz. Keep the
-				 * asynchronous Host cache fresh without sending on every read. */
+				/* GetSignalLevelの呼出周期とは分離し、統計応答を同じbulk IN上へ送りすぎない。 */
 				next_statistics_request_ = std::chrono::steady_clock::now() +
-					std::chrono::milliseconds(kTunePollIntervalMs);
+					std::chrono::milliseconds(kStatisticsRefreshIntervalMs);
 				version = version_;
 				request_statistics = true;
 			}
@@ -547,7 +549,7 @@ private:
 	{
 		std::lock_guard<std::mutex> lock(state_mutex_);
 		next_statistics_request_ = std::chrono::steady_clock::now() +
-			std::chrono::milliseconds(kTunePollIntervalMs);
+			std::chrono::milliseconds(kStatisticsRefreshIntervalMs);
 	}
 
 	int Send(const std::uint8_t *message, std::size_t length,
