@@ -63,6 +63,7 @@ include_directories(
     "${DRIVER_DIR}/common/tuner"
     "${DRIVER_DIR}/common/ts"
     "${DRIVER_DIR}/common/signal"
+    "${DRIVER_DIR}/common/torne"
     "${LIBUSB_INCLUDE_DIRS}"
 )
 
@@ -287,6 +288,12 @@ if(BUILD_TESTING)
         "${MACOS_SRC}/common/msg.c"
         "${DRIVER_DIR}/common/bridge/siano_wire_core.c")
     add_test(NAME siano_protocol_test COMMAND siano_protocol_test)
+
+    add_executable(torne_core_test
+        "${REPO_ROOT}/tests/torne_core_test.c"
+        "${DRIVER_DIR}/common/torne/torne_bridge.c"
+        "${DRIVER_DIR}/common/torne/torne_dib.c")
+    add_test(NAME torne_core_test COMMAND torne_core_test)
 
     # OS 間で機種の定義に差が無いことを確かめる (INI 2種類と Linux の USB ID 表)。
     set(PARITY_TEST_MACOS_CXX_SRCS ${MACOS_CXX_SRCS})
