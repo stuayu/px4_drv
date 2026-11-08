@@ -65,6 +65,8 @@ protected:
 		HANDLE quit_event_;
 
 		std::error_condition error_;
+		// Worker が切断で自己破棄する前に Start() の th_ 設定が終わるよう同期する。
+		std::mutex start_mtx_;
 		std::unique_ptr<std::thread> th_;
 	};
 

@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <thread>
 
 #include "command.hpp"
 #include "receiver_base.hpp"
@@ -142,9 +143,12 @@ int main()
 	command.cmd = px4::command::DataCmdCode::SET_DATA_ID;
 	command.data_id = data_id;
 	const bool sent = SendAll(client, &command, sizeof(command));
+	/* ServerBase の終了通知と、失敗した接続の自己破棄を同時に進める。 */
+	bool stopped = false;
+	std::thread stop_thread([&] { stopped = server.Stop(); });
 	const bool disconnected = sent && WaitForDisconnect(client);
 	close(client);
-	const bool stopped = server.Stop();
+	stop_thread.join();
 	stream_buf->Stop();
 	receiver.Close();
 	receiver_manager.Unregister(&receiver);

@@ -202,6 +202,7 @@ ServerBase::Connection::Connection(ServerBase &parent, std::unique_ptr<px4::Pipe
 	config_(parent_.pipe_config_),
 	receiver_manager_(parent_.receiver_manager_),
 	quit_event_(parent.quit_event_),
+	start_mtx_(),
 	th_()
 {
 
@@ -217,13 +218,22 @@ ServerBase::Connection::~Connection()
 
 bool ServerBase::Connection::Start() noexcept
 {
+	/* 切断が極端に早くても、Worker の自己破棄がスレッド所有権の設定より先行しない。 */
+	std::unique_lock<std::mutex> start_lock(start_mtx_);
+
 	if (th_) {
 		error_.assign(EINVAL, std::generic_category());
 		return false;
 	}
 
 	try {
-		th_.reset(new std::thread(&px4::ServerBase::Connection::Worker, this));
+		th_.reset(new std::thread([this]() noexcept {
+			/* Start() が th_ を公開してから接続処理へ入る。 */
+			{
+				std::lock_guard<std::mutex> lock(start_mtx_);
+			}
+			Worker();
+		}));
 	} catch (const std::system_error &e) {
 		error_.assign(static_cast<int>(e.code().value()), e.code().category());
 		return false;
