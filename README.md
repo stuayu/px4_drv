@@ -29,6 +29,7 @@ PLEX 社の [Webサイト](http://plex-net.co.jp) にて配布されている公
 | ISDB2056 / ISDBT2071 | ○ | ○ | ○ | 製品・ロットごとの検証範囲は別紙を参照 |
 | MyGica T230C 系 (USB `0572:c68a` は Linux の ID 表で T230C2) | △ | △ | △ | ISDB-C のみ (実験的)。Linux と macOS は実機未確認。J.83B の対応を示す根拠なし |
 | Siano RIO (PX-S1UD V2.0 / PX-Q1UD 系) | ○ | ○ | ○ | firmware・製品リビジョン別の確認範囲は [Siano の別紙](docs/siano_tuners.md)を参照 |
+| Sony CECH-ZD1 J (`054c:04b2`) | △ | △ | △ | ISDB-T 1基。実機選局・TS・長時間試験は未完了。Linux は `/dev/tornevideo*` |
 
 T230C 系は、3 OS とも受信経路を持ちますが、Linux と Windows の実機確認が残っています。
 
@@ -37,6 +38,7 @@ T230C 系は、3 OS とも受信経路を持ちますが、Linux と Windows の
 - [ISDB-C と J.83 Annex B の選局の仕様](docs/isdbc_tuning.md)
 - [T230C / T230C2 の Linux 参照手順と方式の制限](docs/t230c_linux_reference.md)
 - [Siano RIO と対応チューナー](docs/siano_tuners.md)
+- [Sony CECH-ZD1 J (torne)](docs/devices/torne.md)
 
 ## 診断ログ
 
@@ -161,6 +163,7 @@ python3 tools/tune_latency.py --json DriverHost_PX4.log
 -  PX-MLT 系チューナー (PX-MLT5PE / PX-MLT8PE / DTV02A-4TS-P / DTV02A-5TS-P) において、WinUSB 版と同じくケーブルテレビ (トランスモジュレーション方式: ISDB-C) とスカパー！プレミアムサービス光 (J.83 Annex B) の受信に対応 (v0.7.0 以降)
   - 受信方法は [ケーブルテレビ (ISDB-C) / スカパー！プレミアムサービス光 (J.83B) の受信](#ケーブルテレビ-isdb-c--スカパープレミアムサービス光-j83b-の受信) を参照のこと
 - Siano RIO 系の PX-S1UD V2.0 / PX-Q1UD と、MyGica T230C2 の ISDB-C 受信を `/dev/px4video*` として追加 (実験的、カーネルビルドのみ確認)
+- Sony CECH-ZD1 J の ISDB-T 受信を `/dev/tornevideo*` として追加 (実機・カーネルビルド未確認)
 - ソースコードを OS 非依存の `driver/common/` と Linux 固有の `driver/linux/` に分け、WinUSB 版・macOS 版とチップ制御のコードを共有
 
 #### ドライバの品質改善
@@ -217,6 +220,10 @@ python3 tools/tune_latency.py --json DriverHost_PX4.log
 - MyGica
 
 	- T230C 系 (USB `0572:c68a` の個体は T230C2、ISDB-C のみ・実験的)
+
+- Sony
+
+	- CECH-ZD1 J (ISDB-T のみ・実験的)
 
 - e-Better
 
@@ -288,6 +295,7 @@ certutil.exe -addstore TrustedPublisher ".\px4_drv_winusb.cer"
 - PX-S1UD V2.0: `BonDriver_PX-S1UD` (実験的)
 - PX-Q1UD: `BonDriver_PX-Q1UD` (実験的、4チューナーの並列受信は実機未確認)
 - MyGica T230C (0572:C68A): `BonDriver_T230C` (実験的、ISDB-C のみ)
+- Sony CECH-ZD1 J: `BonDriver_Torne` (実験的、ISDB-T のみ)
 
 お使いの PC に合うビット数のフォルダの中のファイルを**すべて**選択し、TVTest や EDCB などのソフトウェアが指定する BonDriver の配置フォルダにコピーします。  
 BonDriver と同じフォルダに DriverHost_PX4.exe / DriverHost_PX4.ini / it930x-firmware.bin があることを確認してください。Siano RIO のパッケージには `isdbt_rio.inp` と `LICENCE.siano` も含まれます。T230C の Si2168 / Si2141 のファームウェアは再配布できないため、[T230C の説明](docs/t230c.md)に従って配置してください。
@@ -300,6 +308,8 @@ BonDriver と同じフォルダに DriverHost_PX4.exe / DriverHost_PX4.ini / it9
 **v0.6.0 以降、winUSB 版 px4_drv 専用の WinSCard.dll を TVTest.exe や EpgDataCap_Bon.exe と同じフォルダに配置することで、内蔵カードリーダーが利用できるようになりました！**
 
 PX-S1UD V2.0、PX-Q1UD、MyGica T230C は内蔵カードリーダーを搭載していないため、B-CAS カードには外付けカードリーダーが必要です。
+
+Sony CECH-ZD1 J の内蔵カードスロットはまだ統合していないため、torne の受信 TS を復号する場合も外付けカードリーダーを使ってください。
 
 機種別の BonDriver フォルダに同梱されている `WinSCard.dll` を、TVTest や EDCB など、B-CAS カードを利用するアプリケーションの実行ファイルと同じフォルダにコピーしてください。
 

@@ -1,4 +1,6 @@
 ﻿
+param([string]$PlatformToolset = "v143")
+
 # カレントディレクトリに移動
 if ($MyInvocation.MyCommand.Path -ne $null) {
     $CurrentPath = (Split-Path $MyInvocation.MyCommand.Path -Parent)
@@ -38,14 +40,14 @@ if ((Get-Command msbuild -ErrorAction SilentlyContinue) -eq $null) {
 # MSBuild を使用してソリューションをビルド
 $build_platforms = @('x86', 'x64')
 foreach ($build_platform in $build_platforms) {
-    msbuild px4_winusb.sln /t:"Rebuild" /p:"Configuration=Release-static;Platform=$build_platform;PlatformToolset=v143"
+    msbuild px4_winusb.sln /t:"Rebuild" /p:"Configuration=Release-static;Platform=$build_platform;PlatformToolset=$PlatformToolset"
 
     if ($LASTEXITCODE -ne 0) {
         throw "MSBuild failed. platform: $build_platform"
     }
 
     # Linux 版と WinUSB 版が共有する TS 同期判定を実際の入力値で検証
-    msbuild tests/ts_sync_condition_test.vcxproj /t:"Rebuild" /p:"Configuration=Release-static;Platform=$build_platform;PlatformToolset=v143"
+    msbuild tests/ts_sync_condition_test.vcxproj /t:"Rebuild" /p:"Configuration=Release-static;Platform=$build_platform;PlatformToolset=$PlatformToolset"
     if ($LASTEXITCODE -ne 0) {
         throw "TS sync condition test build failed. platform: $build_platform"
     }
@@ -86,7 +88,7 @@ foreach ($build_platform in $build_platforms) {
         throw "T230C ISDB-C ChSet test failed. platform: $build_platform"
     }
 
-    msbuild tests/siano_protocol_test.vcxproj /t:"Rebuild" /p:"Configuration=Release-static;Platform=$build_platform;PlatformToolset=v143"
+    msbuild tests/siano_protocol_test.vcxproj /t:"Rebuild" /p:"Configuration=Release-static;Platform=$build_platform;PlatformToolset=$PlatformToolset"
     if ($LASTEXITCODE -ne 0) {
         throw "Siano protocol test build failed. platform: $build_platform"
     }
@@ -95,8 +97,17 @@ foreach ($build_platform in $build_platforms) {
         throw "Siano protocol test failed. platform: $build_platform"
     }
 
+    msbuild tests/torne_core_test.vcxproj /t:"Rebuild" /p:"Configuration=Release-static;Platform=$build_platform;PlatformToolset=$PlatformToolset"
+    if ($LASTEXITCODE -ne 0) {
+        throw "torne core test build failed. platform: $build_platform"
+    }
+    & "build/$build_platform/Release-static/torne_core_test.exe"
+    if ($LASTEXITCODE -ne 0) {
+        throw "torne core test failed. platform: $build_platform"
+    }
+
     # Shared diagnostics, TS continuity, USB history, and fixed-point C/N conversion.
-    msbuild tests/diagnostics_test.vcxproj /t:"Rebuild" /p:"Configuration=Release-static;Platform=$build_platform;PlatformToolset=v143"
+    msbuild tests/diagnostics_test.vcxproj /t:"Rebuild" /p:"Configuration=Release-static;Platform=$build_platform;PlatformToolset=$PlatformToolset"
     if ($LASTEXITCODE -ne 0) {
         throw "Diagnostics test build failed. platform: $build_platform"
     }
@@ -105,7 +116,7 @@ foreach ($build_platform in $build_platforms) {
         throw "Diagnostics test failed. platform: $build_platform"
     }
 
-    msbuild tests/signal_stat_test.vcxproj /t:"Rebuild" /p:"Configuration=Release-static;Platform=$build_platform;PlatformToolset=v143"
+    msbuild tests/signal_stat_test.vcxproj /t:"Rebuild" /p:"Configuration=Release-static;Platform=$build_platform;PlatformToolset=$PlatformToolset"
     if ($LASTEXITCODE -ne 0) {
         throw "Signal statistics test build failed. platform: $build_platform"
     }
@@ -139,6 +150,8 @@ New-Item -ItemType Directory dist/BonDriver_PX-Q1UD_32bit
 New-Item -ItemType Directory dist/BonDriver_PX-Q1UD_64bit
 New-Item -ItemType Directory dist/BonDriver_T230C_32bit
 New-Item -ItemType Directory dist/BonDriver_T230C_64bit
+New-Item -ItemType Directory dist/BonDriver_Torne_32bit
+New-Item -ItemType Directory dist/BonDriver_Torne_64bit
 
 # BonDriver_PX4_32bit のファイルをコピー
 Copy-Item build/x86/Release-static/BonDriver_PX4.dll dist/BonDriver_PX4_32bit/BonDriver_PX4-T.dll
@@ -327,6 +340,18 @@ Copy-Item pkg/BonDriver_PX4/BonDriver_T230C-C.ChSet.txt dist/BonDriver_T230C_64b
 Copy-Item pkg/BonDriver_PX4/BonDriver_PX4-J83B.ChSet.txt dist/BonDriver_T230C_64bit/BonDriver_PX4-J83B.ChSet.txt
 Copy-Item build/x64/Release-static/DriverHost_PX4.exe dist/BonDriver_T230C_64bit/DriverHost_PX4.exe
 Copy-Item pkg/DriverHost_PX4/DriverHost_PX4.ini dist/BonDriver_T230C_64bit/DriverHost_PX4.ini
+# BonDriver と同じビット数の WinSCard.dll を配置
+Copy-Item pkg/BonDriver_PX4/BonDriver_Torne.ini dist/BonDriver_Torne_32bit/BonDriver_Torne.ini
+Copy-Item pkg/BonDriver_PX4/BonDriver_Torne-T.ChSet.txt dist/BonDriver_Torne_32bit/BonDriver_Torne-T.ChSet.txt
+Copy-Item build/x86/Release-static/BonDriver_PX4.dll dist/BonDriver_Torne_32bit/BonDriver_Torne.dll
+Copy-Item build/x86/Release-static/DriverHost_PX4.exe dist/BonDriver_Torne_32bit/DriverHost_PX4.exe
+Copy-Item pkg/DriverHost_PX4/DriverHost_PX4.ini dist/BonDriver_Torne_32bit/DriverHost_PX4.ini
+
+Copy-Item pkg/BonDriver_PX4/BonDriver_Torne.ini dist/BonDriver_Torne_64bit/BonDriver_Torne.ini
+Copy-Item pkg/BonDriver_PX4/BonDriver_Torne-T.ChSet.txt dist/BonDriver_Torne_64bit/BonDriver_Torne-T.ChSet.txt
+Copy-Item build/x64/Release-static/BonDriver_PX4.dll dist/BonDriver_Torne_64bit/BonDriver_Torne.dll
+Copy-Item build/x64/Release-static/DriverHost_PX4.exe dist/BonDriver_Torne_64bit/DriverHost_PX4.exe
+Copy-Item pkg/DriverHost_PX4/DriverHost_PX4.ini dist/BonDriver_Torne_64bit/DriverHost_PX4.ini
 
 # 各 BonDriver と同じビット数の WinSCard.dll を配置
 # WinUSB 版の全対応機種で内蔵カードリーダーを利用できる

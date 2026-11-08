@@ -29,6 +29,7 @@
 #include "isdbt2071_device.h"
 #include "t230c_device.h"
 #include "siano_device.h"
+#include "torne_device.h"
 
 /*
  * fallthrough は Linux 5.4 で追加されたため、それより古いカーネルでは 5.4 と同じ定義を置く
@@ -85,6 +86,11 @@
 #endif
 #define ISDBT2071_USB_MAX_CHRDEV	(ISDBT2071_USB_MAX_DEVICE * ISDBT2071_CHRDEV_NUM)
 
+#ifndef TORNE_USB_MAX_DEVICE
+#define TORNE_USB_MAX_DEVICE	16
+#endif
+#define TORNE_USB_MAX_CHRDEV	(TORNE_USB_MAX_DEVICE * TORNE_CHRDEV_NUM)
+
 
 struct px4_usb_context {
 	enum px4_usb_device_type type;
@@ -98,6 +104,7 @@ struct px4_usb_context {
 		struct isdbt2071_device isdbt2071;
 		struct t230c_device t230c;
 		struct siano_device siano;
+		struct torne_device torne;
 	} ctx;
 };
 
@@ -352,6 +359,18 @@ static int px4_usb_probe(struct usb_interface *intf,
 					&ctx->quit_completion);
 		break;
 
+	case USB_VID_SONY:
+		if (id->idProduct != USB_PID_TORNE) {
+			ret = -EINVAL;
+			break;
+		}
+
+		ctx->type = TORNE_USB_DEVICE;
+		ret = torne_device_init(&ctx->ctx.torne, dev, intf,
+					px4_usb_chrdev_ctx[TORNE_USB_DEVICE],
+					&ctx->quit_completion);
+		break;
+
 	default:
 		ret = -EINVAL;
 		break;
@@ -424,6 +443,11 @@ static void px4_usb_disconnect(struct usb_interface *intf)
 		wait_for_completion(&ctx->quit_completion);
 		break;
 
+	case TORNE_USB_DEVICE:
+		torne_device_term(&ctx->ctx.torne);
+		wait_for_completion(&ctx->quit_completion);
+		break;
+
 	default:
 		/* unknown device */
 		break;
@@ -468,6 +492,7 @@ static const struct usb_device_id px4_usb_ids[] = {
 	{ USB_DEVICE(0x0511, USB_PID_DIGIBEST_ISDBT2071) },
 	{ USB_DEVICE(USB_VID_MYGICA, USB_PID_MYGICA_T230C2) },
 	{ USB_DEVICE(USB_VID_SIANO, USB_PID_SIANO_RIO) },
+	{ USB_DEVICE(USB_VID_SONY, USB_PID_TORNE) },
 	{ 0 }
 };
 
@@ -565,6 +590,14 @@ static struct usb_driver px4_usb_driver = {
 		goto fail_isdbt2071;
 	}
 
+	ret = ptx_chrdev_context_create("torne", "tornevideo",
+					TORNE_USB_MAX_CHRDEV,
+					&px4_usb_chrdev_ctx[TORNE_USB_DEVICE]);
+	if (ret) {
+		pr_err("px4_usb_register: ptx_chrdev_context_create(\"torne\") failed.\n");
+		goto fail_torne;
+	}
+
 	ret = usb_register(&px4_usb_driver);
 	if (ret) {
 		pr_err("px4_usb_register: usb_register() failed.\n");
@@ -574,6 +607,9 @@ static struct usb_driver px4_usb_driver = {
 	return 0;
 
 fail_usb:
+	ptx_chrdev_context_destroy(px4_usb_chrdev_ctx[TORNE_USB_DEVICE]);
+
+fail_torne:
 	ptx_chrdev_context_destroy(px4_usb_chrdev_ctx[ISDBT2071_USB_DEVICE]);
 
 fail_isdbt2071:
@@ -608,6 +644,7 @@ fail:
 #endif
 {
 	usb_deregister(&px4_usb_driver);
+	ptx_chrdev_context_destroy(px4_usb_chrdev_ctx[TORNE_USB_DEVICE]);
 	ptx_chrdev_context_destroy(px4_usb_chrdev_ctx[ISDBT2071_USB_DEVICE]);
 	ptx_chrdev_context_destroy(px4_usb_chrdev_ctx[PXS1UR_USB_DEVICE]);
 	ptx_chrdev_context_destroy(px4_usb_chrdev_ctx[PXM1UR_USB_DEVICE]);

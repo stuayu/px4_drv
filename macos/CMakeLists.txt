@@ -63,6 +63,7 @@ include_directories(
     "${DRIVER_DIR}/common/tuner"
     "${DRIVER_DIR}/common/ts"
     "${DRIVER_DIR}/common/signal"
+    "${DRIVER_DIR}/common/torne"
     "${LIBUSB_INCLUDE_DIRS}"
 )
 
@@ -126,6 +127,7 @@ set(SHARED_CXX_SRCS
     "${HOST_SRC}/devices/siano_device.cpp"
     "${HOST_SRC}/devices/siano_protocol.cpp"
     "${HOST_SRC}/devices/siano_wire.cpp"
+    "${HOST_SRC}/devices/torne_device.cpp"
     "${HOST_SRC}/devices/isdb2056_device.cpp"
     "${HOST_SRC}/devices/isdbt2071_device.cpp"
     "${HOST_SRC}/core/receiver_base.cpp"
@@ -145,6 +147,8 @@ set(DRIVER_C_SRCS
     "${DRIVER_DIR}/common/bridge/it930x.c"
     "${DRIVER_DIR}/common/bridge/siano_wire_core.c"
     "${DRIVER_DIR}/common/bridge/t230c_usb.c"
+    "${DRIVER_DIR}/common/torne/torne_bridge.c"
+    "${DRIVER_DIR}/common/torne/torne_dib.c"
     "${DRIVER_DIR}/common/signal/signal_stat.c"
     "${DRIVER_DIR}/common/demod/cxd2856er.c"
     "${DRIVER_DIR}/common/demod/cxd2858er.c"
@@ -287,6 +291,18 @@ if(BUILD_TESTING)
         "${MACOS_SRC}/common/msg.c"
         "${DRIVER_DIR}/common/bridge/siano_wire_core.c")
     add_test(NAME siano_protocol_test COMMAND siano_protocol_test)
+
+    add_executable(torne_core_test
+        "${REPO_ROOT}/tests/torne_core_test.c"
+        "${DRIVER_DIR}/common/torne/torne_bridge.c"
+        "${DRIVER_DIR}/common/torne/torne_dib.c")
+    add_test(NAME torne_core_test COMMAND torne_core_test)
+
+    add_executable(torne_core_cpp_link_test
+        "${REPO_ROOT}/tests/torne_core_cpp_link_test.cpp"
+        "${DRIVER_DIR}/common/torne/torne_bridge.c"
+        "${DRIVER_DIR}/common/torne/torne_dib.c")
+    add_test(NAME torne_core_cpp_link_test COMMAND torne_core_cpp_link_test)
 
     # OS 間で機種の定義に差が無いことを確かめる (INI 2種類と Linux の USB ID 表)。
     set(PARITY_TEST_MACOS_CXX_SRCS ${MACOS_CXX_SRCS})
