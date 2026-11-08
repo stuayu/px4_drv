@@ -151,12 +151,12 @@ docs/                       文書。機種固有の別紙は docs/devices/
 
 - 各チップがハードウェアで扱える方式を一覧にし、対応表を文書化する。
 - CXD2856ER: ISDB-C 64 / 256QAM と J.83B を、CXD2856ER を使う機種で共通の経路にする。既存コードには両方式があるが、CXD2856ER に限定したメーカー資料で J.83B を確認できておらず、J.83B の実機受信も未確認。
-- Si2168 (T230C): DVB-C / J.83B の対応を確認して実装する。
+- Si2168 (T230C): Si2168-D60 仕様書の Description は J.83 Annex B を記載している。共通層の Annex B 選局と、WinUSB・macOS・Linux の J.83B 経路を追加した (実機未確認)。
 - 検証環境は ISDB-C だけで、J.83B の信号は無い。J.83B は実装と自動試験までとし、実機確認は未実施と明記する。
 
 #### 2026-11-08 の公開資料照合
 
-- Si2168-D60 のメーカー短縮仕様は DVB-T2/T/C を列挙し、Linux `si2168` 公開ドライバーは DVB-C Annex A の選局設定を実装している。ISDB-C 専用設定や J.83B の選局設定を示す一次資料を確認できなかったため、T230C の DVB-C 設定を使う ISDB-C は実験的なままとし、J.83B を追加しない。
+- Si2168-D60 の短縮仕様書 (Skyworks) は、Features と Description で ITU-T J.83 Annex A/B/C の復調を記載している。Linux `si2168` 公開ドライバーは Annex A だけを実装している。Annex B の配信方式 0x10、シンボルレートのプロパティ 0x1602、0x98 の状態要求は TBS linux_media (commit dd0e720e) の値を使い、ExperimentalISDBC の下で J.83B を有効にした。ISDB-C は従来どおり実験的のまま。
 - CXD2856ER は ISDB-C を使う公開機器設計資料と CXD2856 公開 driver code がある。J.83B は現在の共通実装に Sony 系 demod/tuner 設定がある一方、参照する J.83B の設定資料が CXD2856ER の完全一致資料ではない。対象機器の実機もないため、実装の存在と silicon capability / 受信確認を分けて記録する。
 
 ### 段階 7: 受信開始までの時間の最適化
