@@ -66,6 +66,10 @@ struct torne_bridge {
 	int log_level;
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* ---- bridge (MB86H47A) ---- */
 void torne_bridge_init(struct torne_bridge *b, const struct torne_ops *ops, void *priv);
 int torne_bridge_start(struct torne_bridge *b);
@@ -94,4 +98,8 @@ void torne_framer_reset(struct torne_framer *f);
 size_t torne_framer_feed(struct torne_framer *f, const u8 *raw, size_t raw_len, u8 *out);
 /* stateless: takes whole units off data, returns the bytes used */
 size_t torne_ts_extract(const u8 *data, size_t len, u8 *out, size_t *written);
+
+#ifdef __cplusplus
+}
+#endif
 #endif /* TORNE_CORE_H */

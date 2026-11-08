@@ -202,6 +202,10 @@ struct torne_dib {
 	u16 t_wbdmux;
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void torne_dib_setup(struct torne_dib *d, struct torne_bridge *br);
 /* identifies and initializes the chips and leaves the TS output in the configured mode (dib8000_init + dib0090_register) */
 int torne_dib_init(struct torne_dib *d);
@@ -212,4 +216,7 @@ int torne_dib_tune(struct torne_dib *d, u32 frequency_hz);
 int torne_dib_status(struct torne_dib *d, struct torne_dib_status *st);
 int torne_dib_sleep(struct torne_dib *d);
 
+#ifdef __cplusplus
+}
+#endif
 #endif /* TORNE_DIB_H */
