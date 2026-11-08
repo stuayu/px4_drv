@@ -36,6 +36,10 @@ static time_t fake_wall_time = 100;
 static bool host_injected = false, output_attempted = false;
 static bool b25_flush_attempted = false, b25_get_attempted = false, b25_put_attempted = false;
 static std::vector<unsigned char> observed_output;
+static bool tune_params_seen = false;
+static px4::SystemType observed_tune_system = px4::SystemType::UNSPECIFIED;
+static uint32_t observed_tune_frequency = 0;
+static uint32_t observed_tune_param_count = UINT32_MAX;
 
 /* 秒の境界をまたぐと、実時間が経つ前に旧方式の -d 1 が終了する。 */
 static time_t fake_time(time_t *out)
@@ -176,6 +180,13 @@ static void host(int ctrl, int data, int mode)
 		cmd->status = CtrlStatusCode::SUCCEEDED;
 		bool capture = cmd->cmd == CtrlCmdCode::SET_CAPTURE &&
 			reinterpret_cast<CtrlCaptureCmd *>(cmd)->capture;
+		if (cmd->cmd == CtrlCmdCode::SET_PARAMS) {
+			const auto *params = reinterpret_cast<const CtrlParamsCmd *>(bytes.data());
+			tune_params_seen = true;
+			observed_tune_system = params->param_set.system;
+			observed_tune_frequency = params->param_set.freq;
+			observed_tune_param_count = params->param_set.num;
+		}
 		if (mode == 3 && cmd->cmd == CtrlCmdCode::SET_CAPTURE && !capture) {
 			cmd->status = CtrlStatusCode::FAILED;
 			host_injected = true;
@@ -235,7 +246,45 @@ static bool run(int mode)
 	return true;
 }
 
+/* H001 is 93.25 MHz; direct frequency uses the ChSet center-frequency unit (kHz). */
+static bool run_j83b(bool direct_frequency)
+{
+	int ctrl[2], data[2];
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, ctrl) || socketpair(AF_UNIX, SOCK_STREAM, 0, data)) return false;
+	ctrl_client = ctrl[0];
+	data_client = data[0];
+	connect_calls = 0;
+	host_injected = output_attempted = false;
+	tune_params_seen = false;
+	observed_tune_system = px4::SystemType::UNSPECIFIED;
+	observed_tune_frequency = 0;
+	observed_tune_param_count = UINT32_MAX;
+	std::thread server(host, ctrl[1], data[1], 7);
+	g_quit = 0;
+	fail_output = false;
+	fake_mode = 7;
+	char arg0[] = "px4rec", arg1[] = "-d", arg2[] = "1", arg3[] = "J";
+	char arg4[] = "1", arg5[] = "/dev/null", arg6[] = "--freq-khz", arg7[] = "101000";
+	char *base_args[] = {arg0, arg1, arg2, arg3, arg4, arg5, nullptr};
+	char *direct_args[] = {arg0, arg1, arg2, arg6, arg7, arg3, arg4, arg5, nullptr};
+	const int result = px4rec_test_main(direct_frequency ? 8 : 6,
+		direct_frequency ? direct_args : base_args);
+	if (ctrl_client >= 0) { close(ctrl_client); ctrl_client = -1; }
+	if (data_client >= 0) { close(data_client); data_client = -1; }
+	server.join();
+	const uint32_t expected_frequency = direct_frequency ? 101000U : 93250U;
+	if (result != 0 || connect_calls < 2 || !host_injected || !tune_params_seen ||
+	    observed_tune_system != px4::SystemType::J83B ||
+	    observed_tune_frequency != expected_frequency || observed_tune_param_count != 0) {
+		fprintf(stderr, "J.83B tune mismatch: result=%d connects=%d seen=%d system=%d frequency=%u params=%u\n",
+			result, connect_calls, tune_params_seen, static_cast<int>(observed_tune_system),
+			observed_tune_frequency, observed_tune_param_count);
+		return false;
+	}
+	return true;
+}
+
 int main()
 {
-	return bad_arguments() && run(1) && run(2) && run(3) && run(0) && run(4) && run(5) && run(6) && run(7) && run(8) ? 0 : 1;
+	return bad_arguments() && run(1) && run(2) && run(3) && run(0) && run(4) && run(5) && run(6) && run(7) && run(8) && run_j83b(false) && run_j83b(true) ? 0 : 1;
 }

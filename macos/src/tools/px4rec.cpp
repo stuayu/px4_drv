@@ -1,8 +1,8 @@
 // px4rec.cpp - TS recording client for DriverHost_PX4 on macOS
 //
 // Usage:
-//   px4rec [options] T|S|C <channel>
-//   px4rec [options] T|S|C <channel> <output_file>
+//   px4rec [options] T|S|C|J <channel>
+//   px4rec [options] T|S|C|J <channel> <output_file>
 //
 // Options:
 //   -i N   Tuner index (0-based; default: -1 = first available)
@@ -12,6 +12,7 @@
 //   T (ISDB-T): physical UHF channel number  13 – 62
 //   S (ISDB-S): transponder number  0–11 = BS,  12–23 = CS110
 //   C (ISDB-C): CATV channel number 13–63 (experimental)
+//   J (J.83B): H001–H105 channel number 1–105
 //
 // Output:
 //   File path, or '-' (or omitted) for stdout.
@@ -615,13 +616,14 @@ static bool close_session(int ctrl_fd, int &data_fd)
 static void usage()
 {
 	fprintf(stderr,
-		"Usage: px4rec [options] T|S|C <channel> [output|-]\n"
+		"Usage: px4rec [options] T|S|C|J <channel> [output|-]\n"
 		"  -i N  tuner index; -d N  duration seconds; --b25  B-CAS decode\n"
 		"  T  ISDB-T physical channel 13-62\n"
 		"  S  ISDB-S transponder 0-11=BS, 12-23=CS110\n"
 		"  C  ISDB-C CATV channel 13-63 (experimental)\n"
-		"  C only: --freq-khz <1-4294967295> --freq-offset <signed kHz>\n"
-		"          --tsmf <0-14> (TSMF TS number, default: 0)\n");
+		"  J  J.83 Annex B H001-H105 (channel number 1-105)\n"
+		"  C/J: --freq-khz <center kHz> --freq-offset <signed kHz>\n"
+		"  C only: --tsmf <0-14> (TSMF TS number, default: 0)\n");
 }
 
 // 数値の欠落・桁あふれを選局前に検出し、誤った周波数で受信を開始しない。
@@ -648,7 +650,7 @@ int main(int argc, char *argv[])
 	int         channel    = -1;
 	const char *outfile    = "-";   // stdout
 
-	bool c_options = false, has_freq = false;
+	bool rf_options = false, has_freq = false;
 	int64_t direct_freq = 0, freq_offset = 0, tsmf = -1;
 
 	// Parse arguments
@@ -660,7 +662,7 @@ int main(int argc, char *argv[])
 			   !strcmp(argv[i], "--tsmf")) {
 			const char *option = argv[i];
 			int64_t *value = &freq_offset, min = INT32_MIN, max = INT32_MAX;
-			c_options = true;
+			rf_options = true;
 			if (!strcmp(option, "--freq-khz")) {
 				value = &direct_freq; min = 1; max = UINT32_MAX; has_freq = true;
 			} else if (!strcmp(option, "--tsmf")) {
@@ -716,19 +718,25 @@ int main(int argc, char *argv[])
 		usage();
 		return 1;
 	}
-	if (!sys_str[0] || sys_str[1] != '\0' || !strchr("TtSsCc", sys_str[0])) {
+	if (!sys_str[0] || sys_str[1] != '\0' || !strchr("TtSsCcJj", sys_str[0])) {
 		fprintf(stderr, "Error: unknown broadcast system: %s\n", sys_str);
 		return 1;
 	}
 
 	bool is_c = (sys_str[0] == 'C' || sys_str[0] == 'c');
-	if (c_options && !is_c) {
-		fprintf(stderr, "Error: --freq-khz, --freq-offset and --tsmf require C\n");
+	bool is_j83b = (sys_str[0] == 'J' || sys_str[0] == 'j');
+	if (rf_options && !is_c && !is_j83b) {
+		fprintf(stderr, "Error: --freq-khz/--freq-offset require C or J; --tsmf requires C\n");
+		return 1;
+	}
+	if (tsmf >= 0 && !is_c) {
+		fprintf(stderr, "Error: --tsmf requires C\n");
 		return 1;
 	}
 	bool is_t = (sys_str[0] == 'T' || sys_str[0] == 't');
 	px4::SystemType sys_type =
 		is_c ? px4::SystemType::ISDB_C :
+		is_j83b ? px4::SystemType::J83B :
 		is_t ? px4::SystemType::ISDB_T : px4::SystemType::ISDB_S;
 
 	// Validate channel and compute frequency
@@ -741,6 +749,19 @@ int main(int argc, char *argv[])
 		center += freq_offset;
 		if (center <= 0 || center > UINT32_MAX) {
 			fprintf(stderr, "Error: adjusted ISDB-C frequency is out of range\n");
+			return 1;
+		}
+		freq_kHz = static_cast<uint32_t>(center);
+	} else if (is_j83b) {
+		if (channel < 1 || channel > 105) {
+			fprintf(stderr, "Error: J.83B channel must be H001-H105 (1-105)\n");
+			return 1;
+		}
+		/* J.83B は H001=93.25 MHz から 6.5 MHz 間隔。地域差は直接周波数で上書きする。 */
+		int64_t center = has_freq ? direct_freq : 93250 + (channel - 1) * 6500;
+		center += freq_offset;
+		if (center < 90000 || center > 770000) {
+			fprintf(stderr, "Error: adjusted J.83B frequency is out of range\n");
 			return 1;
 		}
 		freq_kHz = static_cast<uint32_t>(center);

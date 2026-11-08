@@ -142,6 +142,7 @@ python3 tools/tune_latency.py --json DriverHost_PX4.log
   - libusb を用いた USB デバイスアクセスと、UNIX ドメインソケットによる IPC を実装
   - Windows WinUSB 版と `host/` の受信機・サーバー実装を共有します。利用できる機種は上の対応状況表で確認してください
 - `px4rec C` による ISDB-C の選局と、TSMF の TS 番号の指定に対応 (実験的)
+- `px4rec J` による J.83 Annex B の H001〜H105 選局に対応。地域別の中心周波数は `--freq-khz` で指定できます (実機未確認)
 
 ### 変更点 (Linux 版)
 
@@ -912,7 +913,7 @@ LaunchDaemon の plist は、所有者が root、パーミッションが `644` 
 
 ### 6. 録画 (px4rec)
 
-`px4rec [options] T|S|C <channel> [output|-]` で TS データを録画できます。macOS 版の ISDB-C は実験的な対応です。選局と TSMF の TS の選択は WinUSB 版と共通の処理を使いますが、macOS での長時間受信は未検証です。
+`px4rec [options] T|S|C|J <channel> [output|-]` で TS データを録画できます。macOS 版の ISDB-C は実験的な対応です。選局と TSMF の TS の選択は WinUSB 版と共通の処理を使いますが、macOS での長時間受信と J.83B の実機受信は未検証です。
 
 > [!NOTE]
 > 接続されているチューナーが対応していない系統を指定した場合は `OPEN failed` で終了します。  
@@ -936,6 +937,12 @@ LaunchDaemon の plist は、所有者が root、パーミッションが `644` 
 	# TSMF で多重された C52 の2本目の TS (TS1) を録画
 	$ ./macos/build/px4rec --tsmf 1 C 52 stream.ts
 
+	# J.83B の H001 (channel number 1) を録画
+	$ ./macos/build/px4rec -d 60 J 1 h001.ts
+
+	# 地域別に H026 を +4 MHz ずらした 259.75 MHz で録画
+	$ ./macos/build/px4rec --freq-khz 259750 J 26 h026_shifted.ts
+
 オプション一覧:
 
 | オプション | 説明 |
@@ -943,12 +950,12 @@ LaunchDaemon の plist は、所有者が root、パーミッションが `644` 
 | `-i N` | 使用するチューナーのインデックス (0 始まり、デフォルト: -1 = 最初の空きチューナー) |
 | `-d N` | 録画時間を秒で指定 (省略すると SIGTERM/Ctrl+C まで継続) |
 | `--b25` | B-CAS カードを使って ARIB STD-B25 のデスクランブル処理を行う (macOS の PC/SC フレームワーク経由) |
-| `--freq-khz kHz` | C 専用。中心周波数を直接指定 (1〜4294967295 kHz)。指定時はチャンネル番号からの周波数計算が不要 |
-| `--freq-offset kHz` | C 専用。中心周波数への補正値 (符号付き32bit整数、既定 0)。補正後は1〜4294967295 kHzが必要 |
+| `--freq-khz kHz` | C/J 用。中心周波数を直接指定。C は 1〜4294967295 kHz、J は 90000〜770000 kHz |
+| `--freq-offset kHz` | C/J 用。中心周波数への補正値 (符号付き32bit整数、既定 0)。補正後は C が 1〜4294967295 kHz、J が 90000〜770000 kHz |
 | `--tsmf 0-14` | C 専用。TSMF のヘッダーに載っている有効な TS のうち、0 から数えて何番目を受信するか (既定 0) |
 | `--help` / `-h` | usage を表示 |
-| `T` / `S` / `C` | ISDB-T (地上波) / ISDB-S (衛星) / ISDB-C (CATV トラモジ) |
-| チャンネル | T: 物理チャンネル番号 13–62 / S: トランスポンダ番号 0–11 (BS), 12–23 (CS110) / C: CATV Cチャンネル番号 13–63 |
+| `T` / `S` / `C` / `J` | ISDB-T (地上波) / ISDB-S (衛星) / ISDB-C (CATV トラモジ) / J.83 Annex B |
+| チャンネル | T: 物理チャンネル番号 13–62 / S: トランスポンダ番号 0–11 (BS), 12–23 (CS110) / C: CATV Cチャンネル番号 13–63 / J: H001–H105 を表す番号 1–105 |
 | 出力先 | ファイルパス、または `-` (標準出力、省略時も標準出力) |
 
 ISDB-C の C13〜C22 は物理チャンネル3〜12、C23〜C63 は物理チャンネル22〜62に対応します。中心周波数は `93000 + 物理チャンネル × 6000` kHzで、物理チャンネル12だけ2000 kHzを加算します。UHF/VHF帯の再送信などでは `--freq-khz` で中心周波数を指定できます。直接指定時も Cチャンネル番号13〜63が必要です。
@@ -1120,7 +1127,7 @@ System="ISDB-T,ISDB-S"
 
 ### macOS
 
-`px4rec` の `C` でケーブルテレビ (ISDB-C) を選局できます。TSMF で多重された2本目以降の TS は `--tsmf` で指定します。指定方法は [録画 (px4rec)](#6-録画-px4rec) を参照してください。J.83B の選局は `px4rec` では未対応です。
+`px4rec` の `C` でケーブルテレビ (ISDB-C)、`J` で J.83 Annex B を選局できます。ISDB-C の TSMF で多重された2本目以降の TS は `--tsmf` で指定します。J.83B の既定周波数は H001=93.25 MHz から6.5 MHz刻みで求め、地域別の周波数ずれは `--freq-khz` で直接指定します。指定方法は [録画 (px4rec)](#6-録画-px4rec) を参照してください。J.83B の実機受信は未確認です。
 
 ### MyGica T230C
 
