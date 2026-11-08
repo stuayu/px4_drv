@@ -105,7 +105,7 @@ static int fake_connect(int fd, const struct sockaddr *addr, socklen_t)
 static bool bad_arguments()
 {
 	char old_dir[4096];
-	char tmp[] = "/tmp/px4rec-args-XXXXXX";
+	char tmp[] = "px4rec-args-XXXXXX";
 	if (!getcwd(old_dir, sizeof(old_dir)) || !mkdtemp(tmp) || chdir(tmp)) return false;
 	const char *cases[][5] = {
 		{"-d", "abc", "T", "13", nullptr},
