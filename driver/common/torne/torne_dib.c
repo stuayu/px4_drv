@@ -222,8 +222,8 @@ static u16 dib_read_word(struct torne_dib *d, u16 reg)
 
 	if (d->err)
 		return 0;
-	w[0] = reg >> 8;
-	w[1] = reg;
+	w[0] = (u8)(reg >> 8);
+	w[1] = (u8)reg;
 	rc = torne_i2c_write_read(d->br, TORNE_DIB_I2C_ADDRESS, w, 2, r, 2);
 	if (rc) {
 		LOG(d, TORNE_LOG_ERR, "read DiB8000 register %u: %d", reg, rc);
@@ -240,10 +240,10 @@ static void dib_write_word(struct torne_dib *d, u16 reg, u16 value)
 
 	if (d->err)
 		return;
-	w[0] = reg >> 8;
-	w[1] = reg;
-	w[2] = value >> 8;
-	w[3] = value;
+	w[0] = (u8)(reg >> 8);
+	w[1] = (u8)reg;
+	w[2] = (u8)(value >> 8);
+	w[3] = (u8)value;
 	rc = torne_i2c_write(d->br, TORNE_DIB_I2C_ADDRESS, w, 4);
 	if (rc) {
 		LOG(d, TORNE_LOG_ERR, "write DiB8000 register %u: %d", reg, rc);
@@ -345,8 +345,8 @@ static void tun_write_reg(struct torne_dib *d, u8 reg, u16 value)
 	if (d->err)
 		return;
 	w[0] = reg;
-	w[1] = value >> 8;
-	w[2] = value;
+	w[1] = (u8)(value >> 8);
+	w[2] = (u8)value;
 	rc = tuner_gate(d, TUNER_ADDRESS);
 	if (!rc)
 		rc = torne_i2c_write(d->br, TUNER_ADDRESS, w, 3);
@@ -3549,6 +3549,8 @@ int torne_dib_set_gpio(struct torne_dib *d, u8 pin, bool high)
 
 int torne_dib_tune(struct torne_dib *d, u32 frequency_hz)
 {
+	int ret;
+
 	d->err = 0;
 
 	if (frequency_hz < MIN_FREQUENCY_HZ || frequency_hz > MAX_FREQUENCY_HZ) {
@@ -3578,7 +3580,8 @@ int torne_dib_tune(struct torne_dib *d, u32 frequency_hz)
 	}
 	d->c.frequency = frequency_hz;
 
-	return dib_set_frontend(d) ?: d->err;
+	ret = dib_set_frontend(d);
+	return ret ? ret : d->err;
 }
 
 /* linear interpolation in a descending table (interpolate_value) */
