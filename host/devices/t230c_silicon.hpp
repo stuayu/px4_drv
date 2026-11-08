@@ -19,7 +19,8 @@ class Silicon final {
 public:
     Silicon(I2cTransfer transfer, Delay delay);
     int Initialize(const Bytes &demod_firmware, const TunerFirmwareLoader &load_tuner_firmware, std::string &error);
-    int Tune(std::uint32_t frequency_khz, std::uint32_t symbol_rate_ksps, std::uint32_t bandwidth_mhz, Deadline deadline);
+    /* j83b が true のとき、復調器を J.83 Annex B で選局する (ロック確認も Annex B の 0x98 を使う)。 */
+    int Tune(std::uint32_t frequency_khz, std::uint32_t symbol_rate_ksps, std::uint32_t bandwidth_mhz, Deadline deadline, bool j83b = false);
     int ReadLock(bool &locked, std::int32_t &cnr_millibel, Deadline deadline);
 private:
 	static int I2cRequest(void *context, const i2c_comm_request *requests, int count);

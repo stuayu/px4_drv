@@ -353,6 +353,9 @@ int T230CDevice::Init()
 	wcscpy_s(info.receiver_name, definition.name.c_str());
 	info.receiver_guid = definition.guid;
 	info.systems = definition.systems;
+	// J.83 Annex B は ISDB-C と同じ ExperimentalISDBC の設定で有効にする (地上波の受信機には追加しない)
+	if (experimental_isdbc_)
+		info.systems |= SystemType::J83B;
 	info.index = definition.index;
 	receiver_manager_.Register(info, receiver_.get());
 	initialized_ = true;
@@ -724,7 +727,7 @@ int T230CDevice::Receiver::PrepareTune()
 {
 	if (!parent_.available_ || !parent_.receiver_open_)
 		return -ENODEV;
-	if (params_.system != SystemType::ISDB_C || !parent_.experimental_isdbc_)
+	if ((params_.system != SystemType::ISDB_C && params_.system != SystemType::J83B) || !parent_.experimental_isdbc_)
 		return -ENOSYS;
 	if (params_.bandwidth && params_.bandwidth != 6)
 		return -EINVAL;
@@ -739,21 +742,26 @@ int T230CDevice::Receiver::SetFrequency()
 		return ret;
 	if (!stream_buf_->Purge(parent_.deadline_))
 		return -EIO;
-	/* TSMF の TS は共通の TSMF フィルターで選ぶ。ヘッダーのない搬送波は TS0 の指定でそのまま出力する。
+	/* J.83 Annex B は TSMF を使わないため、分離を止めて TS をそのまま通す。
+	 * ISDB-C の TSMF は共通の TSMF フィルターで選ぶ。ヘッダーのない搬送波は TS0 の指定でそのまま出力する。
 	 * 選局前に USB 転送を止めて配信バッファーを破棄しているため、前の搬送波の TS を捨てる数は 0 にする。 */
-	if (!stream_buf_->StartTsmf(params_.tsmf_stream, false, 0))
+	const bool j83b = params_.system == SystemType::J83B;
+	if (j83b) {
+		stream_buf_->StopTsmf();
+	} else if (!stream_buf_->StartTsmf(params_.tsmf_stream, false, 0)) {
 		return -ENOMEM;
-	/* 選局要求にシンボルレートは含まれないため、ISDB-C の 5.274 Msps を使う。 */
-	const std::uint32_t symbol_rate = 5274;
+	}
+	/* 選局要求にシンボルレートは含まれないため、ISDB-C は 5.274 Msps、J.83 Annex B は 5.6 Msps を使う。 */
+	const std::uint32_t symbol_rate = j83b ? 5600 : 5274;
 	if (!parent_.silicon_)
 		return -ENODEV;
-	ret = parent_.silicon_->Tune(params_.freq, symbol_rate, 6, parent_.deadline_);
+	ret = parent_.silicon_->Tune(params_.freq, symbol_rate, 6, parent_.deadline_, j83b);
 	/* ファームウェア読み込み後の最初の選局だけ、コマンド応答待ちが期限切れになる
 	 * (実機で毎回の初回のみ -ETIMEDOUT、2回目以降は約 190 ms でロック)。
 	 * 選局コマンドは再送しても同じ状態になるため、TUNE の残り時間内で1回だけ送り直す。 */
 	if (ret == -ETIMEDOUT && std::chrono::steady_clock::now() < parent_.deadline_) {
 		msg_info("T230C tune: freq=%u kHz command timed out; retrying once\n", params_.freq);
-		ret = parent_.silicon_->Tune(params_.freq, symbol_rate, 6, parent_.deadline_);
+		ret = parent_.silicon_->Tune(params_.freq, symbol_rate, 6, parent_.deadline_, j83b);
 	}
 	return ret;
 }

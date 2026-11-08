@@ -25,6 +25,10 @@ int main()
     CHECK(tuner.at(2) == Bytes({0x14,0,0x06,0x07,0x88,0x13}));
     CHECK(tuner.at(3) == Bytes({0x41,0,0,0,0x40,0x68,0x31,0x1c}));
     CHECK(DemodTuneCommands(5274, 7).empty());
+    // J.83 Annex B は 5.6 Msym/s、配信方式 0x10、プロパティ 0x1602 のシンボルレートを使う。
+    CHECK(DemodTuneCommands(5600, 6, true).at(7) == Bytes({0x14,0,0x0a,0x10,0x16,0}));
+    CHECK(DemodTuneCommands(5600, 6, true).at(8) == Bytes({0x14,0,0x02,0x16,0xe0,0x15}));
+    CHECK(DemodTuneCommands(5600, 6, false).at(8) == Bytes({0x14,0,0x02,0x11,0xe0,0x15}));
 
     Bytes invalid(18, 0);
     CHECK(ValidateFirmware(invalid) != 0);
@@ -261,5 +265,18 @@ int main()
     CHECK(output.empty() && sync.PendingSize() == 188);
     sync.Reset();
     CHECK(sync.PendingSize() == 0);
+    // J.83 Annex B の選局は、0x1602 のシンボルレートと 0x10 の配信方式を送り、ロック確認は 0x98 を読む。
+    writes.clear();
+    read_sizes.clear();
+    CHECK(silicon.Tune(473000, 5600, 6, std::chrono::steady_clock::now() + std::chrono::seconds(1), true) == 0);
+    CHECK(std::find(writes.begin(), writes.end(), std::make_pair(std::uint8_t(0x64), Bytes({0x14,0,0x0a,0x10,0x16,0}))) != writes.end());
+    CHECK(std::find(writes.begin(), writes.end(), std::make_pair(std::uint8_t(0x64), Bytes({0x14,0,0x02,0x16,0xe0,0x15}))) != writes.end());
+    writes.clear();
+    read_sizes.clear();
+    bool j83b_locked = false;
+    std::int32_t j83b_cnr = 0;
+    CHECK(silicon.ReadLock(j83b_locked, j83b_cnr, Deadline::max()) == 0);
+    CHECK(std::find(writes.begin(), writes.end(), std::make_pair(std::uint8_t(0x64), Bytes({0x98,0x01}))) != writes.end());
+    CHECK(read_sizes == std::vector<std::size_t>({10}));
     return 0;
 }

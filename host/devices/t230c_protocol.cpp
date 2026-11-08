@@ -27,13 +27,14 @@ void TsSynchronizer::Push(const std::uint8_t *data, std::size_t size,
     (void)t230c_ts_sync_push(&sync_, data, size, callback,
                              const_cast<std::function<void(const std::uint8_t *)> *>(&emit));
 }
-std::vector<Bytes> DemodTuneCommands(std::uint32_t symbol_rate_ksps, std::uint32_t bandwidth_mhz)
+std::vector<Bytes> DemodTuneCommands(std::uint32_t symbol_rate_ksps, std::uint32_t bandwidth_mhz, bool j83b)
 {
     si2168_command commands[SI2168_MAX_COMMANDS] = {};
     std::size_t count = 0;
-    if (si2168_build_tune_commands(symbol_rate_ksps, bandwidth_mhz,
-                                   SI2168_T230C_TS_MODE, true,
-                                   commands, SI2168_MAX_COMMANDS, &count))
+    const auto annex = j83b ? SI2168_CABLE_ANNEX_B : SI2168_CABLE_ANNEX_A;
+    if (si2168_build_cable_tune_commands(annex, symbol_rate_ksps, bandwidth_mhz,
+                                         SI2168_T230C_TS_MODE, true,
+                                         commands, SI2168_MAX_COMMANDS, &count))
         return {};
     std::vector<Bytes> result;
     result.reserve(count);

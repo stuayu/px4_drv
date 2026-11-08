@@ -173,7 +173,7 @@ int Silicon::Initialize(const Bytes &demod_firmware,
 
 int Silicon::Tune(std::uint32_t frequency_khz,
 		  std::uint32_t symbol_rate_ksps,
-		  std::uint32_t bandwidth_mhz, Deadline deadline)
+		  std::uint32_t bandwidth_mhz, Deadline deadline, bool j83b)
 {
 	const t230c_u64 deadline_ms = deadline == (Deadline::max)()
 		? ~(t230c_u64)0
@@ -183,6 +183,8 @@ int Silicon::Tune(std::uint32_t frequency_khz,
 	if (ret)
 		return ret;
 	(void)si2141_wait_tune(&tuner_, deadline_ms);
+	if (j83b)
+		return si2168_tune_cable(&demod_, SI2168_CABLE_ANNEX_B, symbol_rate_ksps, bandwidth_mhz, deadline_ms);
 	return si2168_tune(&demod_, symbol_rate_ksps, bandwidth_mhz, deadline_ms);
 }
 

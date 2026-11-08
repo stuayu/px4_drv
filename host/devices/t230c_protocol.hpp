@@ -19,7 +19,8 @@ private:
     t230c_ts_sync sync_{};
 };
 /* Linux drivers/media/dvb-frontends/si2168.c and si2157.c command sequence. */
-std::vector<Bytes> DemodTuneCommands(std::uint32_t symbol_rate_ksps, std::uint32_t bandwidth_mhz);
+/* j83b が true のとき J.83 Annex B の選局列 (配信方式 0x10、シンボルレートのプロパティ 0x1602、0x98 の状態要求) を返す。 */
+std::vector<Bytes> DemodTuneCommands(std::uint32_t symbol_rate_ksps, std::uint32_t bandwidth_mhz, bool j83b = false);
 std::vector<Bytes> TunerTuneCommands(std::uint32_t frequency_khz, std::uint32_t bandwidth_mhz);
 int ValidateFirmware(const Bytes &firmware) noexcept;
 }
