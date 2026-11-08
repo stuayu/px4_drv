@@ -155,6 +155,21 @@ int main()
 			std::fprintf(stderr, "macOS INI lacks %s %s\n", d.type.c_str(), d.interface_guid.c_str());
 			ok = false;
 		}
+	/* DTV02A-5TS-P は共通 PXMLT 実装を使うため、macOS の USB ID 定義も必要。 */
+	bool found_dtv02a_5ts_p = false;
+	for (const auto &d : mac) {
+		if (d.vid != 0x0511 || d.pid != 0x924e)
+			continue;
+		found_dtv02a_5ts_p = true;
+		if (d.type != "PXMLT" || d.systems != std::set<std::string>{"ISDB-T", "ISDB-S"}) {
+			std::fprintf(stderr, "DTV02A-5TS-P has an invalid macOS device definition\n");
+			ok = false;
+		}
+	}
+	if (!found_dtv02a_5ts_p) {
+		std::fprintf(stderr, "macOS INI lacks DTV02A-5TS-P 0511:924e\n");
+		ok = false;
+	}
 	for (const auto &d : mac_set)
 		if (px4::ParseDeviceType(Widen(d.type)) == px4::DeviceType::UNKNOWN) {
 			std::fprintf(stderr, "device factory does not know Type=%s\n", d.type.c_str());
