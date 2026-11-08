@@ -1,0 +1,36 @@
+; Sony CECH-ZD1 J (054C:04B2)
+[Version]
+Signature="$Windows NT$"
+Class=Media
+ClassGuid={4d36e96c-e325-11ce-bfc1-08002be10318}
+Provider=%AuthorName%
+DriverVer=11/08/2026,26.11.08.00
+CatalogFile=px4_drv_winusb.cat
+
+[Manufacturer]
+%AuthorName%=Torne_WinUSB,ntx86,ntamd64,ntarm64
+
+[Torne_WinUSB.ntx86]
+%Torne_WinUSB.DeviceDesc%=Torne_WinUSB.DeviceInstall,USB\VID_054C&PID_04B2
+[Torne_WinUSB.ntamd64]
+%Torne_WinUSB.DeviceDesc%=Torne_WinUSB.DeviceInstall,USB\VID_054C&PID_04B2
+[Torne_WinUSB.ntarm64]
+%Torne_WinUSB.DeviceDesc%=Torne_WinUSB.DeviceInstall,USB\VID_054C&PID_04B2
+
+[Torne_WinUSB.DeviceInstall]
+Include=winusb.inf
+Needs=WINUSB.NT
+AddProperty=Torne_WinUSB.DeviceSetup.AddProperty
+[Torne_WinUSB.DeviceInstall.Services]
+Include=winusb.inf
+Needs=WINUSB.NT.Services
+[Torne_WinUSB.DeviceInstall.HW]
+AddReg=Torne_WinUSB.DeviceSetup.AddReg
+[Torne_WinUSB.DeviceSetup.AddReg]
+HKR,,DeviceInterfaceGUIDs,0x00010000,"{38E7A8C5-27D1-440D-9BCF-83E1B20FB92F}"
+[Torne_WinUSB.DeviceSetup.AddProperty]
+{afd97640-86a3-4210-b67c-289c41aabe55},3,0x00000011,,0
+
+[Strings]
+AuthorName="px4_drv contributors"
+Torne_WinUSB.DeviceDesc="Sony CECH-ZD1 J ISDB-T Receiver (WinUSB)"

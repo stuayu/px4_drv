@@ -125,9 +125,28 @@ static bool run_distributed_t230c()
 	return ok;
 }
 
+/* torne 用の地デジ ChSet が ISDB-T の列として全行読み込めること。 */
+static bool run_distributed_torne()
+{
+	const std::string name = PX4_REPO_ROOT "/winusb/pkg/BonDriver_PX4/BonDriver_Torne-T.ChSet.txt";
+	std::ifstream src(name);
+	std::string line;
+	unsigned int rows = 0;
+	while (std::getline(src, line))
+		if (!line.empty() && line[0] != ';' && line[0] != '$')
+			rows++;
+	px4::ChannelSet channels;
+	channels.SetStrict(true);
+	const bool ok = rows && channels.Load(std::wstring(name.begin(), name.end()), px4::SystemType::ISDB_T) &&
+		channels.ExistsChannel(0, rows - 1) && !channels.ExistsChannel(0, rows);
+	if (!ok)
+		fprintf(stderr, "distributed torne ChSet failed to load (%u rows)\n", rows);
+	return ok;
+}
+
 int main()
 {
-	return run_distributed_t230c() &&
+	return run_distributed_t230c() && run_distributed_torne() &&
 		run("$Space\t0\r\nName\t0\t0\t3\t0\r\n", true, true) &&
 		run("$Space\t0\nName\t0\t0\t3\t0", true, true) &&
 		run("$Space\t0\n;" + std::string(300, 'x') + "\n", false) &&

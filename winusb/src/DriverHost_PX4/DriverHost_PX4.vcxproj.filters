@@ -147,6 +147,9 @@
     <ClCompile Include="..\..\..\host\devices\siano_device.cpp"><Filter>ソース ファイル</Filter></ClCompile>
     <ClCompile Include="..\..\..\host\devices\siano_protocol.cpp"><Filter>ソース ファイル</Filter></ClCompile>
     <ClCompile Include="..\..\..\host\devices\siano_wire.cpp"><Filter>ソース ファイル</Filter></ClCompile>
+    <ClCompile Include="..\..\..\host\devices\torne_device.cpp"><Filter>ソース ファイル</Filter></ClCompile>
+    <ClCompile Include="..\..\..\driver\common\torne\torne_bridge.c"><Filter>ソース ファイル</Filter></ClCompile>
+    <ClCompile Include="..\..\..\driver\common\torne\torne_dib.c"><Filter>ソース ファイル</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\driver\common\demod\cxd2856er.h">
@@ -282,6 +285,12 @@
     <ClInclude Include="..\..\..\host\devices\siano_device.hpp"><Filter>ヘッダー ファイル</Filter></ClInclude>
     <ClInclude Include="..\..\..\host\devices\siano_protocol.hpp"><Filter>ヘッダー ファイル</Filter></ClInclude>
     <ClInclude Include="..\..\..\host\devices\siano_wire.hpp"><Filter>ヘッダー ファイル</Filter></ClInclude>
+    <ClInclude Include="..\..\..\host\devices\torne_device.hpp"><Filter>ヘッダー ファイル</Filter></ClInclude>
+    <ClInclude Include="..\..\..\driver\common\torne\torne_core.h"><Filter>ヘッダー ファイル</Filter></ClInclude>
+    <ClInclude Include="..\..\..\driver\common\torne\torne_dib.h"><Filter>ヘッダー ファイル</Filter></ClInclude>
+    <ClInclude Include="..\..\..\driver\common\torne\torne_regs.h"><Filter>ヘッダー ファイル</Filter></ClInclude>
+    <ClInclude Include="..\..\..\driver\common\torne\torne_fw_gen.h"><Filter>ヘッダー ファイル</Filter></ClInclude>
+    <ClInclude Include="..\..\..\driver\common\torne\torne_dib_tables_gen.h"><Filter>ヘッダー ファイル</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\pkg\DriverHost_PX4\DriverHost_PX4.ini">

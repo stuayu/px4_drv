@@ -163,6 +163,51 @@ int main()
 	for (const auto &[os_name, devices] : {
 		std::pair<const char *, const std::vector<Device> *>{"macOS", &mac},
 		std::pair<const char *, const std::vector<Device> *>{"WinUSB", &win}}) {
+		bool found_torne = false;
+		for (const auto &d : *devices) {
+			if (d.type != "TORNE")
+				continue;
+			found_torne = true;
+			if (d.systems != std::set<std::string>{"ISDB-T"}) {
+				std::fprintf(stderr, "%s TORNE must expose one ISDB-T receiver\n", os_name);
+				ok = false;
+			}
+			if (std::string(os_name) == "macOS" &&
+			    (d.vid != 0x054c || d.pid != 0x04b2)) {
+				std::fprintf(stderr, "macOS TORNE has %04x:%04x, expected 054c:04b2\n",
+					d.vid, d.pid);
+				ok = false;
+			}
+			if (std::string(os_name) == "WinUSB" && d.interface_guid.empty()) {
+				std::fprintf(stderr, "WinUSB TORNE lacks DeviceInterfaceGUID\n");
+				ok = false;
+			}
+		}
+		if (!found_torne) {
+			std::fprintf(stderr, "%s INI lacks TORNE 054c:04b2\n", os_name);
+			ok = false;
+		}
+	}
+	if (px4::ParseDeviceType(L"TORNE") == px4::DeviceType::UNKNOWN) {
+		std::fprintf(stderr, "device factory does not know Type=TORNE\n");
+		ok = false;
+	}
+	std::string torne_interface_guid;
+	for (const auto &d : win)
+		if (d.type == "TORNE")
+			torne_interface_guid = d.interface_guid;
+	std::ifstream torne_inf(root + "/winusb/pkg/inf/Torne.inf", std::ios::binary);
+	const std::string torne_inf_text((std::istreambuf_iterator<char>(torne_inf)),
+					 std::istreambuf_iterator<char>());
+	if (torne_interface_guid.empty() ||
+	    torne_inf_text.find("USB\\VID_054C&PID_04B2") == std::string::npos ||
+	    torne_inf_text.find(torne_interface_guid) == std::string::npos) {
+		std::fprintf(stderr, "Torne.inf does not match the WinUSB device definition\n");
+		ok = false;
+	}
+	for (const auto &[os_name, devices] : {
+		std::pair<const char *, const std::vector<Device> *>{"macOS", &mac},
+		std::pair<const char *, const std::vector<Device> *>{"WinUSB", &win}}) {
 		bool found_t230c = false;
 		for (const auto &d : *devices) {
 			if (d.type != "T230C") {
@@ -199,6 +244,10 @@ int main()
 	const auto linux_ids = LoadLinuxIds(root);
 	if (linux_ids.empty()) {
 		std::fprintf(stderr, "Linux USB ID table could not be read\n");
+		ok = false;
+	}
+	if (!linux_ids.count({0x054c, 0x04b2})) {
+		std::fprintf(stderr, "Linux lacks TORNE 054c:04b2\n");
 		ok = false;
 	}
 	for (const auto &d : mac_set) {

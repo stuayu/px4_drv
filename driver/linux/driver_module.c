@@ -67,7 +67,7 @@ module_exit(m_cleanup);
 
 MODULE_VERSION(PX4_DRV_VERSION);
 MODULE_AUTHOR("nns779");
-MODULE_DESCRIPTION("Unofficial Linux driver for PLEX PX4/PX5/PX-MLT, MyGica T230C2 and Siano RIO receivers");
+MODULE_DESCRIPTION("Unofficial Linux driver for px4_drv receivers including Sony CECH-ZD1 J");
 MODULE_LICENSE("GPL v2");
 
 MODULE_FIRMWARE(IT930X_FIRMWARE_FILENAME);

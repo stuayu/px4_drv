@@ -10,6 +10,7 @@
 #include "isdbt2071_device.hpp"
 #include "t230c_device.hpp"
 #include "siano_device.hpp"
+#include "torne_device.hpp"
 
 namespace px4 {
 
@@ -27,6 +28,7 @@ constexpr TypeEntry kTypes[] = {
 	{ DeviceType::ISDBT2071, L"ISDBT2071" },
 	{ DeviceType::T230C, L"T230C" },
 	{ DeviceType::SIANO, L"SIANO" },
+	{ DeviceType::TORNE, L"TORNE" },
 };
 
 template <typename T>
@@ -80,6 +82,8 @@ CreatedDevice CreateDevice(DeviceType type, const std::wstring &path,
 	case DeviceType::SIANO:
 		/* 同じ USB ID の RIO 機能ごとに一受信機を登録する。 */
 		return Make<SianoDevice>(path, definition, index, receiver_manager);
+	case DeviceType::TORNE:
+		return Make<TorneDevice>(path, definition, index, receiver_manager);
 	default:
 		break;
 	}
