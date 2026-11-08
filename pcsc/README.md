@@ -75,6 +75,17 @@ pcscd はカードの有無の問い合わせ (`IFDHICCPresence()`) が失敗す
 IFD ハンドラーは USB 切断以外の失敗ではその場で1回だけ検出し直し、失敗を pcscd のログに記録します。  
 続けて失敗した場合はエラーを返し、カードの状態を監視するアプリケーションにリーダーの異常を伝えます。
 
+### Sony CECH-ZD1 J を Linux で PC/SC 登録する手順
+
+この手順はコードと設定から整理したもので、Linux に Sony CECH-ZD1 J を接続した実機確認はまだ行っていません。カードの列挙、ATR、APDU、および受信とカード通信の同時動作は未確認です。
+
+1. 対象カーネル向けの `px4_drv` モジュールをビルドして導入し、モジュールを読み込みます。USB 機器の確認には `lsusb -d 054c:04b2`、カードデバイスの確認には `ls -l /dev/px4card/` を使います。Sony CECH-ZD1 J の登録が成功すると `/dev/px4card/<ID>` が現れます。
+2. pcsc-lite と `pcscd` を用意し、リポジトリのルートで `sudo make -C pcsc install` を実行します。IFD bundle と `Info.plist` は `pkg-config --variable=usbdropdir libpcsclite` が示す USB ドライバーディレクトリへ配置されます。
+3. IFD bundle を導入した後に `pcscd` を起動します。既に `pcscd` が稼働していた環境では、ドライバーの `Info.plist` を読み直すためサービスを再起動します。USB リーダーは `Info.plist` の VID/PID から自動検出されるため、`/etc/reader.conf.d/` への個別登録は不要です。
+4. カードを挿入した状態で `pcsc_scan` を実行し、Sony CECH-ZD1 J のリーダーと ATR が表示されるか確認します。pcscd のログにデバイスファイルの open 失敗が出る場合は、カーネルモジュールの登録状態と `/dev/px4card/<ID>` の所有者・グループ・権限を調べます。
+
+`pcsc_scan` の表示だけでは APDU の成功や TS 受信への影響を確認できません。APDU と受信を同時に行い、応答、TS 同期、TEI、continuity counter、受信停止の有無を記録する実機試験が別途必要です。
+
 ## macOS の IFD ハンドラー
 
 macOS 用 bundle は `ifdhandler_macos.cpp` と `Info-macos.plist` で構成し、Sony CECH-ZD1 J を登録します。IFD ハンドラーは USB を直接開かず、`PX4_RUNTIME_DIR` の `px4_card_pipe.sock` 経由で DriverHost_PX4 の CardServer へ PC/SC の `STATUS`、`RESET`、`TRANSMIT` を渡します。DriverHost_PX4 が USB ブリッジの唯一の所有者となり、チューナー受信とカード通信を同じ機器状態で直列化します。
