@@ -115,7 +115,7 @@ static void emit_packet(void *context, const t230c_ts_u8 *packet)
 /*
  * J.83 Annex B は Annex A と次の2点だけが違う (TBS の si2168.c dd0e720e、
  * set_frontend の SYS_DVBC_ANNEX_B 分岐と status の 0x98 を参照)。
- * - 配信方式の値 0x10 (Annex A は 0x30) をプロパティ 0x0a10 に書く
+ * - 配信方式の値 0x10 (Annex A は 0x30) をプロパティ 0x100a (バイト列 0a 10) に書く
  * - シンボルレートをプロパティ 0x1602 に書く (Annex A は 0x1102)
  * - 状態要求は 0x98 01 で、応答は10バイト (Annex A は 0x90 01 と9バイト)
  */
