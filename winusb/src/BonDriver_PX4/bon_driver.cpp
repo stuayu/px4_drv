@@ -225,7 +225,8 @@ bool BonDriver::Init()
 		}
 
 		if ((systems_ & px4::SystemType::ISDB_C) == px4::SystemType::ISDB_C) {
-			px4::ChannelSet chset_c;
+			/* 不正行を読み飛ばして空や欠落した表を有効扱いしない。 */
+			px4::ChannelSet chset_c(true);
 			std::wstring chset_path;
 			bool has_chset_path = false;
 			/*
@@ -252,13 +253,19 @@ bool BonDriver::Init()
 				has_chset_path = true;
 			} catch (const std::out_of_range&) {}
 
+			bool used_fallback = false;
 			const bool result = chset_c.LoadWithFallback(has_chset_path ? &chset_path : nullptr,
-				dir_path + L"BonDriver_PX4-C.ChSet.txt", allow_fallback, px4::SystemType::ISDB_C);
+				dir_path + L"BonDriver_PX4-C.ChSet.txt", allow_fallback, px4::SystemType::ISDB_C,
+				&used_fallback);
 
+			if (used_fallback)
+				msg_warn("Init: configured ISDB-C ChSet could not be loaded; using the default ChSet\n");
 			if (result)
 				chset_.Merge(chset_c);
 			else if (!allow_fallback)
 				msg_err("Init: ISDB-C ChSet is missing or could not be loaded (%ls); fallback is disabled by ChSetFallback=0\n", chset_path.c_str());
+			else
+				msg_err("Init: default ISDB-C ChSet is missing or contains invalid rows\n");
 		}
 
 		if ((systems_ & px4::SystemType::J83B) == px4::SystemType::J83B) {

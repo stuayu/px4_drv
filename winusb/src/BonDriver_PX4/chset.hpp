@@ -58,7 +58,8 @@ public:
 	 * path を読み込み、失敗した場合は allow_fallback のときだけ default_path を読み込む。
 	 * path が nullptr の場合も allow_fallback のときだけ default_path を読み込む。失敗時は途中まで読んだ表を残さない。
 	 */
-	bool LoadWithFallback(const std::wstring *path, const std::wstring &default_path, bool allow_fallback, px4::SystemType system) noexcept;
+	bool LoadWithFallback(const std::wstring *path, const std::wstring &default_path, bool allow_fallback,
+		px4::SystemType system, bool *used_fallback = nullptr) noexcept;
 	bool Merge(ChannelSet &chset) noexcept;
 	bool ExistsSpace(std::uint32_t space_id) const noexcept;
 	const std::wstring& GetSpaceName(std::uint32_t space_id) const;

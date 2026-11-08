@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "isdbc_channel.h"
 #include "util.hpp"
 
 namespace px4 {
@@ -121,8 +122,12 @@ bool ChannelSet::Load(const std::wstring &path, px4::SystemType system) noexcept
 	return true;
 }
 
-bool ChannelSet::LoadWithFallback(const std::wstring *path, const std::wstring &default_path, bool allow_fallback, px4::SystemType system) noexcept
+bool ChannelSet::LoadWithFallback(const std::wstring *path, const std::wstring &default_path, bool allow_fallback,
+	px4::SystemType system, bool *used_fallback) noexcept
 {
+	if (used_fallback)
+		*used_fallback = false;
+
 	if (!path && !allow_fallback) {
 		Clear();
 		return false;
@@ -135,6 +140,8 @@ bool ChannelSet::LoadWithFallback(const std::wstring *path, const std::wstring &
 		Clear();
 		if (!allow_fallback)
 			return false;
+		if (used_fallback)
+			*used_fallback = true;
 	}
 
 	if (Load(default_path, system))
@@ -272,21 +279,54 @@ bool ChannelSet::ParseCable(char **head, char **tail, px4::SystemType system, Ch
 		return true;
 	}
 
-	// ISDB-C の物理チャンネル番号 (0〜112)
+	// 現行の物理チャンネル番号 (0〜112) と旧形式の番号 (113〜124)
 	if (!*tail)
 		return false;
 	Split(head, tail, '\t');
-	if (!parse(*head, 0, 112, value))
+	if (!parse(*head, 0, 124, value))
 		return false;
-	ch.ptx_ch = static_cast<std::uint32_t>(value);
+	const long physical_channel = value;
 
-	// TSMF のヘッダーに載っている有効な TS のうち、0 から数えて何番目か (TS0〜TS14)
+	// 5列の現行形式は物理chとTSMF番号、6/7列の旧形式は物理ch・TSID・中心周波数・補正。
 	if (!*tail)
 		return false;
 	Split(head, tail, '\t');
-	if (!parse(*head, 0, 14, value) || *tail)
+	if (!*tail) {
+		if (physical_channel > 112 || !parse(*head, 0, 14, value))
+			return false;
+		ch.ptx_ch = static_cast<std::uint32_t>(physical_channel);
+		ch.tsmf_stream = static_cast<std::uint8_t>(value);
+		return true;
+	}
+
+	long tsid;
+	if (!parse(*head, 0, 65535, tsid))
 		return false;
-	ch.tsmf_stream = static_cast<std::uint8_t>(value);
+	ch.tsid = static_cast<std::uint16_t>(tsid);
+
+	Split(head, tail, '\t');
+	if (!parse(*head, 0, 1000000, value))
+		return false;
+	if (*tail) {
+		Split(head, tail, '\t');
+		if (!parse(*head, -3000, 3000, value) || *tail)
+			return false;
+	}
+
+	long current_channel;
+	if (physical_channel >= 113 && physical_channel <= 115) {
+		current_channel = physical_channel - 113;
+	} else if (physical_channel >= 116 && physical_channel <= 124) {
+		current_channel = physical_channel - 103;
+	} else {
+		current_channel = physical_channel;
+	}
+	if (isdbc_channel_to_khz(static_cast<int>(current_channel)) < 0)
+		return false;
+
+	/* 旧形式の周波数値と補正は現行の共有物理ch表に置き換えるため、構文と範囲だけ検証する。 */
+	ch.ptx_ch = static_cast<std::uint32_t>(current_channel);
+	ch.tsmf_stream = 0;
 
 	return true;
 }

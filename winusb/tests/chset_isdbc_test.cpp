@@ -52,7 +52,7 @@ int wmain(int argc, wchar_t **argv)
 		"f93250\t0\t3\t93250\t0\r\n"
 		"ts15\t0\t4\t51\t15\r\n"
 		"ts99\t0\t5\t51\t99\r\n"
-		"extra\t0\t6\t51\t0\t0\r\n"
+		"extra\t0\t6\t51\t0\t0\t0\t0\r\n"
 		"short\t0\t7\t51\r\n"
 		"suffix\t0\t8\t51x\t0\r\n"
 		"h001\t0\t9\tH001\t0\r\n";
@@ -75,6 +75,33 @@ int wmain(int argc, wchar_t **argv)
 	px4::ChannelSet isdbc_strict(true);
 	CHECK(!isdbc_strict.Load(path, px4::SystemType::ISDB_C));
 	std::puts("ISDB-C ChSet columns and boundaries: PASS");
+
+	// 旧形式は物理ch・TSID・中心周波数・補正を持つ。旧 VHF 番号も現行番号へ正規化する。
+	const char *legacy_isdbc_body =
+		"$CATV\t0\r\n$UHF\t1\r\n$VHF\t2\r\n"
+		"C13\t0\t0\t3\t65535\t0\t-200\r\n"
+		"U13\t1\t0\t63\t0\t473000\t-600\r\n"
+		"U21\t1\t1\t71\t0\t520750\t-650\r\n"
+		"VHF1\t2\t0\t113\t0\t93000\r\n"
+		"VHF4\t2\t1\t116\t0\t171000\r\n"
+		"VHF12\t2\t2\t124\t0\t219000\r\n";
+	path = WriteTemp(legacy_isdbc_body);
+	px4::ChannelSet legacy_isdbc(true);
+	CHECK(legacy_isdbc.Load(path, px4::SystemType::ISDB_C));
+	CHECK(legacy_isdbc.GetChannel(0, 0).ptx_ch == 3);
+	CHECK(legacy_isdbc.GetChannel(0, 0).tsid == 65535);
+	CHECK(legacy_isdbc.GetChannel(0, 0).tsmf_stream == 0);
+	CHECK(legacy_isdbc.GetChannel(1, 0).ptx_ch == 63);
+	CHECK(legacy_isdbc.GetChannel(1, 1).ptx_ch == 71);
+	CHECK(legacy_isdbc.GetChannel(2, 0).ptx_ch == 0);
+	CHECK(legacy_isdbc.GetChannel(2, 1).ptx_ch == 13);
+	CHECK(legacy_isdbc.GetChannel(2, 2).ptx_ch == 21);
+
+	path = WriteTemp(
+		"$UHF\t0\r\ninvalid-frequency\t0\t0\t63\t0\t1000001\t-600\r\n");
+	px4::ChannelSet invalid_legacy_isdbc(true);
+	CHECK(!invalid_legacy_isdbc.Load(path, px4::SystemType::ISDB_C));
+	std::puts("Legacy ISDB-C ChSet normalization and errors: PASS");
 
 	// J.83B の行は中心周波数 (kHz) の1列だけで、TSMF を使わないため後ろに列を持たない
 	const char *j83b_body =
