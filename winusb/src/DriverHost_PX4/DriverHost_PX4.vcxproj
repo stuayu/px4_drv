@@ -320,6 +320,7 @@
     <ClInclude Include="..\..\..\host\common\config.hpp" />
     <ClInclude Include="..\..\..\host\common\msg.h" />
     <ClInclude Include="..\..\..\host\common\pipe.hpp" />
+    <ClInclude Include="..\..\..\host\common\pipe_error_state.hpp" />
     <ClInclude Include="..\common\security_attributes.hpp" />
     <ClInclude Include="..\..\..\host\common\type.hpp" />
     <ClInclude Include="..\..\..\host\common\util.hpp" />

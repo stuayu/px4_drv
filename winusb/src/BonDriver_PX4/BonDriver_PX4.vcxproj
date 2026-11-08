@@ -274,16 +274,19 @@
     <ClInclude Include="..\..\..\host\common\config.hpp" />
     <ClInclude Include="..\..\..\host\common\msg.h" />
     <ClInclude Include="..\..\..\host\common\pipe.hpp" />
+    <ClInclude Include="..\..\..\host\common\pipe_error_state.hpp" />
     <ClInclude Include="..\common\security_attributes.hpp" />
     <ClInclude Include="..\..\..\host\common\type.hpp" />
     <ClInclude Include="..\..\..\host\common\util.hpp" />
     <ClInclude Include="bon_driver.hpp" />
     <ClInclude Include="chset.hpp" />
     <ClInclude Include="cmd_client.hpp" />
+    <ClInclude Include="deferred_release.hpp" />
     <ClInclude Include="io_queue.hpp" />
     <ClInclude Include="pipe_client.hpp" />
     <ClInclude Include="receiver_info_set.hpp" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="stream_queue_slot.hpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\pkg\BonDriver_PX4\BonDriver_PX-MLT.ini" />

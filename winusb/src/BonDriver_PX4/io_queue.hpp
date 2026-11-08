@@ -23,6 +23,7 @@ public:
 
 	struct IoBuffer final {
 		std::unique_ptr<std::uint8_t[]> buf;
+		std::size_t capacity;
 		std::size_t actual_length;
 	};
 
@@ -54,6 +55,7 @@ public:
 
 	bool Read(void *buf, std::size_t &size, std::size_t &remain_count, bool blocking);
 	bool ReadBuffer(void **buf, std::size_t &size, std::size_t &remain_count, bool blocking);
+	std::unique_ptr<IoBuffer> DetachLastReturnedBuffer();
 	bool HaveReadingBuffer();
 	bool Write(void *buf, std::size_t &size, bool blocking);
 
@@ -83,6 +85,8 @@ private:
 	std::condition_variable free_cond_;
 	std::unique_ptr<IoBuffer> current_buf_;
 	std::size_t current_ofs_;
+	bool current_buf_leased_;
+	std::atomic<bool> stopped_;
 	int data_ignore_count_;
 	int data_ignore_remain_;
 	std::atomic<std::chrono::milliseconds::rep> read_flush_interval_;

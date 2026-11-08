@@ -5,7 +5,6 @@
 
 #include <cerrno>
 #include <cstring>
-#include <mutex>
 
 #include <sys/socket.h>
 #include <poll.h>
@@ -17,19 +16,6 @@ namespace px4 {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/*
- * データ接続は同じ Pipe の受信を接続スレッド、送信を配信スレッドから行うため、
- * 切断時は両方が同時に失敗を記録する。記録だけを直列化し、GetError() は失敗した
- * 呼び出しと同じスレッドから読む (現在の読み手は Accept() の失敗を扱う1か所だけ)。
- */
-static std::mutex g_error_mtx;
-
-static void set_error(std::error_condition &error, int value)
-{
-	std::lock_guard<std::mutex> lock(g_error_mtx);
-	error.assign(value, std::generic_category());
-}
 
 static inline int get_fd(HANDLE h)
 {
@@ -69,7 +55,7 @@ bool Pipe::Read(void *buf, std::size_t size, std::size_t &return_size,
 		HANDLE cancel_event) noexcept
 {
 	if (!IsConnected()) {
-		set_error(error_, EBADF);
+		error_.assign(EBADF, std::generic_category());
 		return false;
 	}
 
@@ -93,12 +79,12 @@ bool Pipe::Read(void *buf, std::size_t size, std::size_t &return_size,
 		int r = ::poll(pfds, nfds, -1);
 		if (r < 0) {
 			if (errno == EINTR) continue;
-			set_error(error_, errno);
+			error_.assign(errno, std::generic_category());
 			return false;
 		}
 
 		if (nfds == 2 && (pfds[1].revents & POLLIN)) {
-			set_error(error_, ECANCELED);
+			error_.assign(ECANCELED, std::generic_category());
 			return false;
 		}
 
@@ -106,11 +92,11 @@ bool Pipe::Read(void *buf, std::size_t size, std::size_t &return_size,
 			ssize_t n = ::recv(fd, buf, size, 0);
 			if (n < 0) {
 				if (errno == EINTR) continue;
-				set_error(error_, errno);
+				error_.assign(errno, std::generic_category());
 				return false;
 			}
 			if (n == 0) {
-				set_error(error_, ECONNRESET);
+				error_.assign(ECONNRESET, std::generic_category());
 				return false;
 			}
 			return_size = static_cast<std::size_t>(n);
@@ -133,7 +119,7 @@ bool Pipe::Write(const void *buf, std::size_t size, std::size_t &return_size,
 		 HANDLE cancel_event) noexcept
 {
 	if (!IsConnected()) {
-		set_error(error_, EBADF);
+		error_.assign(EBADF, std::generic_category());
 		return false;
 	}
 
@@ -161,12 +147,12 @@ bool Pipe::Write(const void *buf, std::size_t size, std::size_t &return_size,
 		int r = ::poll(pfds, nfds, -1);
 		if (r < 0) {
 			if (errno == EINTR) continue;
-			set_error(error_, errno);
+			error_.assign(errno, std::generic_category());
 			return false;
 		}
 
 		if (nfds == 2 && (pfds[1].revents & POLLIN)) {
-			set_error(error_, ECANCELED);
+			error_.assign(ECANCELED, std::generic_category());
 			return false;
 		}
 
@@ -179,7 +165,7 @@ bool Pipe::Write(const void *buf, std::size_t size, std::size_t &return_size,
 			ssize_t n = ::send(fd, p, left, MSG_NOSIGNAL);
 			if (n < 0) {
 				if (errno == EINTR) continue;
-				set_error(error_, errno);
+				error_.assign(errno, std::generic_category());
 				return false;
 			}
 			p           += n;

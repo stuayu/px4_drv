@@ -208,6 +208,9 @@
     <ClInclude Include="..\..\..\host\common\pipe.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\host\common\pipe_error_state.hpp">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
     <ClInclude Include="..\common\security_attributes.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>

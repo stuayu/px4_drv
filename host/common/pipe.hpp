@@ -7,6 +7,7 @@
 #include <system_error>
 
 #include <windows.h>
+#include "pipe_error_state.hpp"
 
 namespace px4 {
 
@@ -30,7 +31,10 @@ public:
 	bool Call(void *buf, std::size_t size) noexcept;
 	bool Call(const void *buf_in, std::size_t size_in, void *buf_out, std::size_t size_out) noexcept;
 
-	const std::error_condition& GetError() const noexcept { return error_; }
+	std::error_condition GetError() const noexcept
+	{
+		return error_.Get();
+	}
 
 protected:
 	Pipe() noexcept : Pipe(nullptr) {}
@@ -40,7 +44,7 @@ protected:
 	void CancelPendingIo(OVERLAPPED &ol) noexcept;
 	static void CancelPendingIo(HANDLE handle, OVERLAPPED &ol) noexcept;
 
-	std::error_condition error_;
+	px4::PipeErrorState error_;
 	HANDLE handle_;
 	HANDLE ol_event_[2];	// [0]: read, [1]: write
 };

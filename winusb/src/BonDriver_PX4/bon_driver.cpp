@@ -2,15 +2,18 @@
 
 #include <algorithm>
 #include <cstring>
+#include <chrono>
 #include <string>
 #include <map>
 #include <stdexcept>
+#include <utility>
 
 #include <windows.h>
 #include <aclapi.h>
 #include <shlwapi.h>
 
 #include "bon_driver.hpp"
+#include "deferred_release.hpp"
 #include "config.hpp"
 #include "chset.hpp"
 #include "security_attributes.hpp"
@@ -22,8 +25,47 @@
 
 namespace px4 {
 
+namespace {
+
+px4::DeferredReleasePool<BonDriver>& ReleasedBonDrivers()
+{
+	// ProxyEx は Release 前に TS reader を join する。Open の10秒期限の3倍を猶予にし、再接続burst用に最大8殻を残す。
+	static px4::DeferredReleasePool<BonDriver> drivers(std::chrono::milliseconds(30000), 8);
+	return drivers;
+}
+
+px4::DeferredReleasePool<IoQueue::IoBuffer>& ReleasedBuffers()
+{
+	// 返却済みbufferを一時保持し、既定188*1024 byteなら合計768KiB未満に抑える。
+	static px4::DeferredReleasePool<IoQueue::IoBuffer> buffers(std::chrono::milliseconds(30000), 4);
+	return buffers;
+}
+
+void SweepReleasedBonDriverPools()
+{
+	ReleasedBonDrivers().SweepExpired();
+	ReleasedBuffers().SweepExpired();
+}
+
+void RetainReleasedBonDriver(BonDriver *driver, std::size_t bytes)
+{
+	ReleasedBonDrivers().Retain(driver, bytes);
+}
+
+void RetainReleasedBuffer(std::unique_ptr<IoQueue::IoBuffer> buffer)
+{
+	if (!buffer)
+		return;
+	const std::size_t capacity = buffer->capacity;
+	ReleasedBuffers().Retain(std::move(buffer), capacity);
+}
+
+} // namespace
+
 BonDriver::BonDriver() noexcept
 	: mtx_(),
+	released_(false),
+	terminated_(false),
 	driver_host_path_(),
 	configs_(),
 	name_(),
@@ -40,8 +82,7 @@ BonDriver::BonDriver() noexcept
 	space_(0),
 	ch_(0),
 	display_error_message_(false),
-	stream_mtx_(),
-	ioq_(nullptr),
+	ioq_(),
 	iorp_(*this),
 	current_ofs_(0),
 	quit_event_(nullptr)
@@ -51,7 +92,6 @@ BonDriver::BonDriver() noexcept
 
 BonDriver::~BonDriver()
 {
-	CloseTuner();
 	Term();
 }
 
@@ -252,7 +292,7 @@ bool BonDriver::Init()
 		if (!quit_event_)
 			return false;
 
-		ioq_.reset(new px4::IoQueue(px4::IoQueue::IoOperation::READ, iorp_, 188 * num_packets, max_buffers, min_buffers, data_ignore_count));
+		ioq_.Install(std::make_shared<px4::IoQueue>(px4::IoQueue::IoOperation::READ, iorp_, 188 * num_packets, max_buffers, min_buffers, data_ignore_count));
 	} catch (const std::runtime_error &e) {
 		if (display_error_message_) MessageBoxA(nullptr, e.what(), "BonDriver_PX4 (BonDriver::Init)", MB_OK);
 		return false;
@@ -266,18 +306,44 @@ bool BonDriver::Init()
 
 void BonDriver::Term() noexcept
 {
-	ioq_.reset();
+	std::lock_guard<std::mutex> lock(mtx_);
+	TermLocked(false);
+}
+
+void BonDriver::TermLocked(bool retain_returned_buffer)
+{
+	if (terminated_)
+		return;
+
+	released_ = true;
+	CloseTunerLocked();
+	auto queue = ioq_.Reset();
+	if (queue) {
+		queue->Stop();
+		if (retain_returned_buffer)
+			RetainReleasedBuffer(queue->DetachLastReturnedBuffer());
+	}
 
 	if (quit_event_) {
 		CloseHandle(quit_event_);
 		quit_event_ = nullptr;
 	}
+
+	terminated_ = true;
+}
+
+std::size_t BonDriver::GetRetainedMemoryBytes() const noexcept
+{
+	return sizeof(*this) + (driver_host_path_.capacity() + name_.capacity()) * sizeof(wchar_t) +
+		configs_.GetDynamicMemoryBytes() + chset_.GetDynamicMemoryBytes() + receivers_.GetDynamicMemoryBytes();
 }
 
 const BOOL BonDriver::OpenTuner()
 {
 	BOOL ret = TRUE;
 	std::lock_guard<std::mutex> lock(mtx_);
+	if (released_ || terminated_)
+		return FALSE;
 
 	if (open_)
 		return TRUE;
@@ -365,9 +431,15 @@ const BOOL BonDriver::OpenTuner()
 		if (!ctrl_client_.SetCapture(true))
 			throw BonDriverError("BonDriver::OpenTuner: command failed.");
 
-		ioq_->Start();
+		auto queue = ioq_.GetInstalled();
+		if (!queue || !queue->Start())
+			throw BonDriverError("BonDriver::OpenTuner: stream queue cannot start.");
 
 		open_ = TRUE;
+		if (!ioq_.Enable()) {
+			open_ = FALSE;
+			throw BonDriverError("BonDriver::OpenTuner: stream queue is unavailable.");
+		}
 	} catch (const std::exception &e) {
 		ret = FALSE;
 		if (display_error_message_) MessageBoxA(nullptr, e.what(), "BonDriver_PX4 (BonDriver::OpenTuner)", MB_OK | MB_ICONERROR);
@@ -378,8 +450,11 @@ const BOOL BonDriver::OpenTuner()
 
 	if (!open_) {
 		if (data_pipe_) {
-			SetEvent(quit_event_);
-			ioq_->Stop();
+			if (quit_event_)
+				SetEvent(quit_event_);
+			auto queue = ioq_.Disable();
+			if (queue)
+				queue->Stop();
 			data_pipe_.reset();
 		}
 
@@ -393,13 +468,22 @@ const BOOL BonDriver::OpenTuner()
 void BonDriver::CloseTuner()
 {
 	std::lock_guard<std::mutex> lock(mtx_);
+	CloseTunerLocked();
+}
 
+
+void BonDriver::CloseTunerLocked()
+{
 	if (!open_)
 		return;
 
+	open_ = FALSE;
+	auto queue = ioq_.Disable();
 	if (data_pipe_) {
-		SetEvent(quit_event_);
-		ioq_->Stop();
+		if (quit_event_)
+			SetEvent(quit_event_);
+		if (queue)
+			queue->Stop();
 		data_pipe_.reset();
 	}
 
@@ -414,8 +498,6 @@ void BonDriver::CloseTuner()
 	space_ = 0;
 	ch_ = 0;
 
-	open_ = FALSE;
-
 	return;
 }
 
@@ -428,7 +510,7 @@ const float BonDriver::GetSignalLevel(void)
 {
 	std::lock_guard<std::mutex> lock(mtx_);
 
-	if (!open_)
+	if (released_ || !open_)
 		return 0.0f;
 
 	px4::command::StatSet stat_set;
@@ -445,12 +527,14 @@ const float BonDriver::GetSignalLevel(void)
 
 const DWORD BonDriver::WaitTsStream(const DWORD dwTimeOut)
 {
-	return (ioq_->WaitDataBuffer(std::chrono::milliseconds((dwTimeOut == INFINITE) ? 5000 : dwTimeOut))) ? WAIT_OBJECT_0 : WAIT_TIMEOUT;
+	auto queue = ioq_.Acquire();
+	return (queue && queue->WaitDataBuffer(std::chrono::milliseconds((dwTimeOut == INFINITE) ? 5000 : dwTimeOut))) ? WAIT_OBJECT_0 : WAIT_TIMEOUT;
 }
 
 const DWORD BonDriver::GetReadyCount(void)
 {
-	return static_cast<::DWORD>(ioq_->GetDataBufferCount() + (ioq_->HaveReadingBuffer() ? 1 : 0));
+	auto queue = ioq_.Acquire();
+	return queue ? static_cast<::DWORD>(queue->GetDataBufferCount() + (queue->HaveReadingBuffer() ? 1 : 0)) : 0;
 }
 
 const BOOL BonDriver::GetTsStream(BYTE *pDst, DWORD *pdwSize, DWORD *pdwRemain)
@@ -476,7 +560,8 @@ const BOOL BonDriver::GetTsStream(BYTE **ppDst, DWORD *pdwSize, DWORD *pdwRemain
 
 	std::size_t size, remain;
 
-	if (!ioq_->ReadBuffer(reinterpret_cast<void **>(ppDst), size, remain, false))
+	auto queue = ioq_.Acquire();
+	if (!queue || !queue->ReadBuffer(reinterpret_cast<void **>(ppDst), size, remain, false))
 		return FALSE;
 
 	*pdwSize = static_cast<::DWORD>(size);
@@ -488,22 +573,34 @@ const BOOL BonDriver::GetTsStream(BYTE **ppDst, DWORD *pdwSize, DWORD *pdwRemain
 
 void BonDriver::PurgeTsStream(void)
 {
-	{
-		px4::command::DataCmd data_cmd;
-		std::size_t ret_size;
-		std::lock_guard<std::mutex> lock(mtx_);
+	std::lock_guard<std::mutex> lock(mtx_);
+	PurgeTsStreamLocked();
+}
 
-		data_cmd.cmd = px4::command::DataCmdCode::PURGE;
-		data_pipe_->Write(&data_cmd, sizeof(data_cmd), ret_size);
-	}
+void BonDriver::PurgeTsStreamLocked()
+{
+	if (released_ || !open_ || !data_pipe_)
+		return;
 
-	ioq_->PurgeDataBuffer();
-	return;
+	px4::command::DataCmd data_cmd;
+	std::size_t ret_size;
+	data_cmd.cmd = px4::command::DataCmdCode::PURGE;
+	data_pipe_->Write(&data_cmd, sizeof(data_cmd), ret_size);
+
+	auto queue = ioq_.Acquire();
+	if (queue)
+		queue->PurgeDataBuffer();
 }
 
 void BonDriver::Release(void)
 {
-	delete this;
+	std::lock_guard<std::mutex> lock(mtx_);
+	if (released_ || terminated_)
+		return;
+
+	const std::size_t retained_bytes = GetRetainedMemoryBytes();
+	TermLocked(true);
+	RetainReleasedBonDriver(this, retained_bytes);
 }
 
 LPCTSTR BonDriver::GetTunerName(void)
@@ -513,6 +610,7 @@ LPCTSTR BonDriver::GetTunerName(void)
 
 const BOOL BonDriver::IsTunerOpening(void)
 {
+	std::lock_guard<std::mutex> lock(mtx_);
 	return open_;
 }
 
@@ -536,7 +634,8 @@ LPCTSTR BonDriver::EnumChannelName(const DWORD dwSpace, const DWORD dwChannel)
 
 const BOOL BonDriver::SetChannel(const DWORD dwSpace, const DWORD dwChannel)
 {
-	if (!open_)
+	std::unique_lock<std::mutex> lock(mtx_);
+	if (released_ || !open_)
 		return FALSE;
 
 	if (!chset_.ExistsChannel(dwSpace, dwChannel))
@@ -631,8 +730,6 @@ const BOOL BonDriver::SetChannel(const DWORD dwSpace, const DWORD dwChannel)
 	bool ret = true;
 
 	try {
-		std::lock_guard<std::mutex> lock(mtx_);
-
 		if (lnb_power_) {
 			if (system == px4::SystemType::ISDB_S) {
 				if (!lnb_power_state_) {
@@ -661,25 +758,27 @@ const BOOL BonDriver::SetChannel(const DWORD dwSpace, const DWORD dwChannel)
 
 	// TSMF で選んだ TS は毎秒数十 KB のことがあり、バッファーが埋まるまで待つと最初のデータまで数秒かかるため、ISDB-C だけ 200ms で途中まででも渡す
 	// 地デジや BS/CS は 192KB を 0.1 秒前後で埋めるので、従来どおり埋まるまで待つ
-	ioq_->SetReadFlushInterval(std::chrono::milliseconds((system == px4::SystemType::ISDB_C) ? 200 : 0));
-	PurgeTsStream();
-
 	if (ret) {
 		// succeeded
 		space_ = dwSpace;
 		ch_ = dwChannel;
 	}
+	if (auto queue = ioq_.Acquire())
+		queue->SetReadFlushInterval(std::chrono::milliseconds((system == px4::SystemType::ISDB_C) ? 200 : 0));
+	PurgeTsStreamLocked();
 
 	return !!ret;
 }
 
 const DWORD BonDriver::GetCurSpace(void)
 {
+	std::lock_guard<std::mutex> lock(mtx_);
 	return space_;
 }
 
 const DWORD BonDriver::GetCurChannel(void)
 {
+	std::lock_guard<std::mutex> lock(mtx_);
 	return ch_;
 }
 
@@ -705,6 +804,7 @@ bool BonDriver::ReadProvider::Do(void *buf, std::size_t &size)
 extern "C" IBonDriver* CreateBonDriver()
 {
 	try {
+		px4::SweepReleasedBonDriverPools();
 		auto bon = new px4::BonDriver();
 
 		if (!bon)

@@ -42,6 +42,17 @@ public:
 
 	void SetStrict(bool strict) noexcept { strict_ = strict; }
 	void Clear() noexcept { spaces_.clear(); next_space_id_ = 0; }
+	std::size_t GetDynamicMemoryBytes() const noexcept
+	{
+		std::shared_lock<std::shared_mutex> lock(mtx_);
+		std::size_t bytes = spaces_.capacity() * sizeof(SpaceInfo);
+		for (const auto &space : spaces_) {
+			bytes += space.name.capacity() * sizeof(wchar_t) + space.channels.bucket_count() * sizeof(void*);
+			for (const auto &channel : space.channels)
+				bytes += sizeof(channel) + channel.second.name.capacity() * sizeof(wchar_t) + 2 * sizeof(void*);
+		}
+		return bytes;
+	}
 	bool Load(const std::wstring &path, px4::SystemType system) noexcept;
 	/*
 	 * path を読み込み、失敗した場合は allow_fallback のときだけ default_path を読み込む。

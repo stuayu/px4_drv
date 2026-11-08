@@ -19,6 +19,7 @@
 #include "command.hpp"
 #include "cmd_client.hpp"
 #include "io_queue.hpp"
+#include "stream_queue_slot.hpp"
 
 namespace px4 {
 
@@ -61,6 +62,11 @@ public:
 	const DWORD GetCurChannel(void) override;
 
 private:
+	void CloseTunerLocked();
+	void TermLocked(bool retain_returned_buffer);
+	void PurgeTsStreamLocked();
+	std::size_t GetRetainedMemoryBytes() const noexcept;
+
 	class ReadProvider final : public IoQueue::IoProvider {
 	public:
 		explicit ReadProvider(BonDriver& parent) : parent_(parent) {}
@@ -75,6 +81,8 @@ private:
 	};
 
 	std::mutex mtx_;
+	bool released_;
+	bool terminated_;
 	std::wstring driver_host_path_;
 	px4::ConfigSet configs_;
 	std::wstring name_;
@@ -91,8 +99,7 @@ private:
 	DWORD space_, ch_;
 	BOOL display_error_message_;
 
-	std::mutex stream_mtx_;
-	std::unique_ptr<px4::IoQueue> ioq_;
+	px4::StreamQueueSlot<px4::IoQueue> ioq_;
 	ReadProvider iorp_;
 	std::size_t current_ofs_;
 	HANDLE quit_event_;

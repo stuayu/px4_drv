@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -17,6 +18,7 @@ public:
 
 	void Load(const px4::ConfigSet &configs) noexcept;
 	const px4::command::ReceiverInfo& Get(std::size_t i) const;
+	std::size_t GetDynamicMemoryBytes() const noexcept { return receivers_.capacity() * sizeof(px4::command::ReceiverInfo); }
 
 private:
 	std::vector<px4::command::ReceiverInfo> receivers_;

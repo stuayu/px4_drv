@@ -401,6 +401,16 @@ if(BUILD_TESTING)
     target_include_directories(chset_loader_test PRIVATE "${WINUSB_SRC}/BonDriver_PX4")
     target_compile_definitions(chset_loader_test PRIVATE PX4_REPO_ROOT="${REPO_ROOT}")
     add_test(NAME chset_loader_test COMMAND chset_loader_test)
+    # GetTsStream が返した領域を PurgeTsStream 相当の処理が再利用せず、次の読み出しまで保つ。
+    add_executable(bon_driver_stream_lifetime_test
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/bon_driver_stream_lifetime_test.cpp"
+        "${WINUSB_SRC}/BonDriver_PX4/io_queue.cpp")
+    target_include_directories(bon_driver_stream_lifetime_test PRIVATE "${WINUSB_SRC}/BonDriver_PX4")
+    add_test(NAME bon_driver_stream_lifetime_test COMMAND bon_driver_stream_lifetime_test)
+    # 名前付きパイプの Read/Write が同時に失敗してもエラー状態を安全に共有する。
+    add_executable(pipe_error_state_test "${CMAKE_CURRENT_SOURCE_DIR}/tests/pipe_error_state_test.cpp")
+    target_include_directories(pipe_error_state_test PRIVATE "${HOST_SRC}/common")
+    add_test(NAME pipe_error_state_test COMMAND pipe_error_state_test)
     # 共通の StreamBuffer の停止要求・異常通知・ロック範囲と、データ ID の検索を単体で検証する。
     add_executable(stream_buffer_test "${CMAKE_CURRENT_SOURCE_DIR}/tests/stream_buffer_test.cpp"
         "${HOST_SRC}/core/receiver_base.cpp"

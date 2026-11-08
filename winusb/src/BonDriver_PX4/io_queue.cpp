@@ -20,6 +20,8 @@ IoQueue::IoQueue(IoOperation io_op, IoProvider &iop, std::size_t buf_size, std::
 	min_(min),
 	total_buf_num_(0),
 	current_ofs_(0),
+	current_buf_leased_(false),
+	stopped_(true),
 	data_ignore_count_(data_ignore_count),
 	data_ignore_remain_(0),
 	read_flush_interval_(0)
@@ -52,7 +54,7 @@ bool IoQueue::Start()
 			++it;
 	}
 
-	if (current_buf_) {
+	if (current_buf_ && !current_buf_leased_) {
 		free_buf_.push_back(std::move(current_buf_));
 		current_ofs_ = 0;
 	}
@@ -72,13 +74,21 @@ bool IoQueue::Start()
 
 	data_lock.unlock();
 
-	th_.reset(new std::thread((io_op_ == IoOperation::READ) ? &px4::IoQueue::ReadWorker : &px4::IoQueue::WriteWorker, this));
+	stopped_ = false;
+	try {
+		th_.reset(new std::thread((io_op_ == IoOperation::READ) ? &px4::IoQueue::ReadWorker : &px4::IoQueue::WriteWorker, this));
+	} catch (...) {
+		stopped_ = true;
+		throw;
+	}
 	return true;
 }
 
 bool IoQueue::Stop()
 {
 	std::lock_guard<std::mutex> lock(mtx_);
+	stopped_ = true;
+	data_cond_.notify_all();
 
 	if (!th_)
 		return true;
@@ -121,20 +131,22 @@ std::size_t IoQueue::GetFreeBufferCount() const
 
 bool IoQueue::WaitDataBuffer(std::chrono::milliseconds ms)
 {
-	std::lock_guard<std::mutex> lock(mtx_);
 	std::unique_lock<std::mutex> data_lock(data_mtx_);
 
+	if (stopped_.load())
+		return false;
 	if (data_buf_.size())
 		return true;
 
+	const auto ready = [this] { return !data_buf_.empty() || stopped_.load(); };
 	if (ms.count()) {
-		if (data_cond_.wait_for(data_lock, ms) == std::cv_status::timeout)
+		if (!data_cond_.wait_for(data_lock, ms, ready))
 			return false;
 	} else {
-		data_cond_.wait(data_lock);
+		data_cond_.wait(data_lock, ready);
 	}
 
-	return true;
+	return !stopped_.load() && !data_buf_.empty();
 }
 
 void IoQueue::PurgeDataBuffer()
@@ -143,7 +155,7 @@ void IoQueue::PurgeDataBuffer()
 	std::unique_lock<std::mutex> free_lock(free_mtx_);
 	std::lock_guard<std::mutex> data_lock(data_mtx_);
 
-	if (current_buf_) {
+	if (current_buf_ && !current_buf_leased_) {
 		free_buf_.push_back(std::move(current_buf_));
 		current_ofs_ = 0;
 	}
@@ -175,6 +187,15 @@ bool IoQueue::Read(void *buf, std::size_t &size, std::size_t &remain_count, bool
 
 	bool ret = false;
 	std::lock_guard<std::mutex> lock(mtx_);
+	if (stopped_)
+		return false;
+
+	if (current_buf_ && current_buf_->actual_length == current_ofs_) {
+		current_buf_leased_ = false;
+		PushBackFreeBuffer(std::move(current_buf_));
+		current_ofs_ = 0;
+	}
+
 	std::uint8_t *p = static_cast<std::uint8_t*>(buf);
 	std::size_t remain = size;
 
@@ -197,6 +218,7 @@ bool IoQueue::Read(void *buf, std::size_t &size, std::size_t &remain_count, bool
 		ret = true;
 
 		if (buf->actual_length == current_ofs_) {
+			current_buf_leased_ = false;
 			PushBackFreeBuffer(std::move(current_buf_));
 			current_ofs_ = 0;
 		}
@@ -216,8 +238,13 @@ bool IoQueue::ReadBuffer(void **buf, std::size_t &size, std::size_t &remain_coun
 	remain_count = 0;
 
 	std::lock_guard<std::mutex> lock(mtx_);
+	if (stopped_)
+		return false;
 
 	if (current_buf_ && current_buf_->actual_length == current_ofs_) {
+		// ReadBuffer が返したポインターは次の ReadBuffer まで使われるため、
+		// ここでのみ返却済みバッファーを再利用可能にする。
+		current_buf_leased_ = false;
 		PushBackFreeBuffer(std::move(current_buf_));
 		current_ofs_ = 0;
 	}
@@ -231,13 +258,26 @@ bool IoQueue::ReadBuffer(void **buf, std::size_t &size, std::size_t &remain_coun
 	*buf = current_buf_->buf.get() + current_ofs_;
 	size = current_buf_->actual_length - current_ofs_;
 	current_ofs_ = current_buf_->actual_length;
+	current_buf_leased_ = true;
 	remain_count = GetDataBufferCount();
 
 	return true;
 }
 
+std::unique_ptr<IoQueue::IoBuffer> IoQueue::DetachLastReturnedBuffer()
+{
+	std::lock_guard<std::mutex> lock(mtx_);
+	if (!current_buf_leased_ || !current_buf_)
+		return nullptr;
+
+	current_buf_leased_ = false;
+	current_ofs_ = 0;
+	return std::move(current_buf_);
+}
+
 bool IoQueue::HaveReadingBuffer()
 {
+	std::lock_guard<std::mutex> lock(mtx_);
 	return !!current_buf_;
 }
 
@@ -255,6 +295,7 @@ bool IoQueue::IncreaseFreeBuffer()
 	auto buf = new IoBuffer;
 
 	buf->buf.reset(new std::uint8_t[buf_size_]);
+	buf->capacity = buf_size_;
 	buf->actual_length = 0;
 
 	free_buf_.emplace_front(buf);
