@@ -281,7 +281,7 @@ static int t230c_chrdev_tune(struct ptx_chrdev *chrdev,
 	bool was_capturing;
 	int ret;
 
-	if (!params || params->system != PTX_ISDB_C_SYSTEM)
+	if (!params || (params->system != PTX_ISDB_C_SYSTEM && params->system != PTX_J83B_SYSTEM))
 		return -EINVAL;
 	if (params->bandwidth != 6)
 		return -EINVAL;
@@ -303,7 +303,12 @@ static int t230c_chrdev_tune(struct ptx_chrdev *chrdev,
 		goto restore_capture;
 	/* Si2157 の TUNINT 待ちは参照ドライバーと同じく失敗を選局失敗にしない。 */
 	(void)si2141_wait_tune(&device->tuner, ~(t230c_u64)0);
-	ret = si2168_tune(&device->demod, 5274, 6, ~(t230c_u64)0);
+	/* ISDB-C は 5.274 Msym/s の Annex A、J.83 Annex B は 5.6 Msym/s の Annex B で選局する。
+	 * J.83B は TSMF を使わず、TS をそのまま出力する。 */
+	if (params->system == PTX_J83B_SYSTEM)
+		ret = si2168_tune_cable(&device->demod, SI2168_CABLE_ANNEX_B, 5600, 6, ~(t230c_u64)0);
+	else
+		ret = si2168_tune(&device->demod, 5274, 6, ~(t230c_u64)0);
 restore_capture:
 	WRITE_ONCE(device->capture_enabled, was_capturing);
 exit:
@@ -502,7 +507,7 @@ int t230c_device_init(struct t230c_device *device, struct device *dev,
 	demod_firmware = NULL;
 	t230c_usb_set_deadline(&device->usb, ~(t230c_u64)0);
 
-	chrdev_config.system_cap = PTX_ISDB_C_SYSTEM;
+	chrdev_config.system_cap = PTX_ISDB_C_SYSTEM | PTX_J83B_SYSTEM;
 	chrdev_config.ops = &t230c_chrdev_ops;
 	chrdev_config.ringbuf_size = 188 * px4_device_params.tsdev_max_packets;
 	chrdev_config.ringbuf_threshold_size = chrdev_config.ringbuf_size / 10;
