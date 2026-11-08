@@ -20,9 +20,10 @@ public:
 	int IsCardDataReady(bool &ready) override;
 	int ReadCardData(std::uint8_t *buf, std::uint8_t &len) override;
 	int WriteCardData(const std::uint8_t *buf, std::uint8_t len) override;
+	int SetCardIoTimeout(std::uint32_t timeout_ms) override;
 
 private:
-	int Request(unsigned long command, void *argument);
+	int Request(unsigned long command, void *argument, bool log_unsupported = true);
 	int fd_ = -1;
 };
 

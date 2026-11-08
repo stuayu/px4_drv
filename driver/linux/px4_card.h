@@ -19,9 +19,23 @@
 struct px4_card;
 struct usb_device;
 
+struct px4_card_operations {
+	int (*power_on)(void *context);
+	int (*power_off)(void *context);
+	int (*set_timeout)(void *context, u32 timeout_ms);
+	int (*detect)(void *context, bool *present);
+	int (*reset)(void *context);
+	int (*set_baudrate)(void *context, u32 baudrate);
+	int (*rx_ready)(void *context, bool *ready);
+	int (*read)(void *context, struct px4_card_frame *frame);
+	int (*write)(void *context, const struct px4_card_frame *frame);
+};
+
 struct px4_card_backend {
 	struct it930x_bridge *it930x;
-	/* チューナーの制御と共有する機種のロックで、カードの操作中は保持し続ける */
+	/* 非 IT930x ブリッジは各操作で必要なロック範囲を自分で管理する */
+	const struct px4_card_operations *operations;
+	/* IT930x バックエンドではチューナーと共有するロック。operations 使用時は各 callback がロックを取る */
 	struct mutex *lock;
 	/* USB 切断で 0 になる機種の利用可能状態 */
 	atomic_t *available;

@@ -5,8 +5,8 @@
 
 ## 解決する問題
 
-px4_drv が扱う PLEX 製品と e-Better 製品の内蔵カードリーダーは、独立した USB PC/SC デバイスとして接続されていません。  
-カードとの通信は、IT930x 系 USB ブリッジを介して UART と制御コマンドを送受信する構造になっています。  
+px4_drv が扱う PLEX 製品、e-Better 製品、Sony CECH-ZD1 J の内蔵カードリーダーは、独立した USB PC/SC デバイスとして接続されていません。
+各製品の USB ブリッジを介して UART と制御コマンドを送受信します。IT930x 系製品と CECH-ZD1 J の MB86H47A では、UART のレジスター操作が異なります。
 このため、WinUSB 版ドライバを導入しただけでは Windows のスマートカードリソースマネージャーから内蔵カードリーダーを列挙できません。
 
 **WinSCard_PX4** は、DTV アプリケーションと同じディレクトリへ `WinSCard.dll` として配置し、Windows WinSCard API に内蔵カードリーダーを追加する互換 DLL です。  
@@ -55,7 +55,7 @@ SmartCard / CardDevice
 機種別デバイス実装
     |
     v
-IT930x 制御転送と UART
+機種別 USB ブリッジ制御と UART
 ```
 
 この分離により、アプリケーションごとの WinSCard API 互換処理、プロセス間通信、T=1 プロトコル、機種固有の電源管理を別々に検証できます。
@@ -80,15 +80,17 @@ IT930x 制御転送と UART
 
 ### DriverHost_PX4 側
 
-[`../DriverHost_PX4/card_server.cpp`](../DriverHost_PX4/card_server.cpp) は、リーダー列挙、接続の共有条件、トランザクション、カード単位の排他制御を担当します。
+[`../../../host/core/card_server.cpp`](../../../host/core/card_server.cpp) は、リーダー列挙、接続の共有条件、トランザクション、カード単位の排他制御を担当します。
 
-[`../common/card_command.hpp`](../common/card_command.hpp) は WinSCard_PX4 と DriverHost_PX4 のプロセス間通信契約です。  
+[`../../../host/common/card_command.hpp`](../../../host/common/card_command.hpp) は WinSCard_PX4 と DriverHost_PX4 のプロセス間通信契約です。
 コマンド構造体は固定長であり、文字列の終端、配列の長さ、プロトコル版を受信側で検証します。  
 構造体を変更する場合は、古い DLL と新しい DriverHost_PX4 が混在したときの挙動を明示し、`card_command::VERSION` を更新してください。
 
-[`../DriverHost_PX4/smart_card.cpp`](../DriverHost_PX4/smart_card.cpp) は、カードの検出、ATR の取得と解析、T=1 の初期化、APDU の分割と連結、再送、状態破棄を担当します。  
-[`../DriverHost_PX4/card_device.hpp`](../DriverHost_PX4/card_device.hpp) は、T=1 処理から機種固有の UART 操作を隔離する抽象インターフェースです。  
+[`../../../host/core/smart_card.cpp`](../../../host/core/smart_card.cpp) は、カードの検出、ATR の取得と解析、T=1 の初期化、APDU の分割と連結、再送、状態破棄を担当します。
+[`../../../host/core/card_device.hpp`](../../../host/core/card_device.hpp) は、T=1 処理から機種固有の UART 操作を隔離する抽象インターフェースです。
 各機種の `DeviceBase` 派生クラスは、カードリーダーの有無、電源の参照数、USB 切断時の無効化を実装します。
+
+Sony CECH-ZD1 J は `TorneDevice` が `HasCardReader()` を公開し、[`torne_card.c`](../../../driver/common/torne/torne_card.c) の MB86H47A UART 操作を `CardDevice` へ接続します。カード UART ロックはレジスター1回の read/write ごと、USB 制御ロックは転送1回ごとに解放し、選局用 mutex はカード通信に使いません。ATR / T=1 のポーリング中はロックを保持しません。torne のカード VCC は UART が制御するため、チューナーと共有する基板電源参照はありません。
 
 ## WinSCard API の互換性
 

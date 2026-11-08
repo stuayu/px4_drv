@@ -51,7 +51,7 @@ void LinuxCardDevice::Disconnect() noexcept
 	}
 }
 
-int LinuxCardDevice::Request(unsigned long command, void *argument)
+int LinuxCardDevice::Request(unsigned long command, void *argument, bool log_unsupported)
 {
 	if (fd_ < 0)
 		return -ENODEV;
@@ -63,7 +63,7 @@ int LinuxCardDevice::Request(unsigned long command, void *argument)
 	if (ret == 0)
 		return 0;
 	const int error = errno;
-	if (error == ENOTTY)
+	if (error == ENOTTY && log_unsupported)
 		Log2(PCSC_LOG_ERROR, "ioctl(0x%lx) is not supported by the px4_drv kernel module", command);
 	return -error;
 }
@@ -129,6 +129,14 @@ int LinuxCardDevice::WriteCardData(const std::uint8_t *buf, std::uint8_t len)
 	frame.length = len;
 	std::memcpy(frame.data, buf, len);
 	return Request(PX4_CARD_WRITE, &frame);
+}
+
+int LinuxCardDevice::SetCardIoTimeout(std::uint32_t timeout_ms)
+{
+	__u32 value = timeout_ms;
+	const int ret = Request(PX4_CARD_SET_TIMEOUT, &value, false);
+	/* 古い kernel module はこの任意拡張 ioctl を知らない。既存機種は従来の転送時間で動作する。 */
+	return ret == -ENOTTY ? 0 : ret;
 }
 
 static bool ReadNumber(const std::filesystem::path &path, unsigned int &value,

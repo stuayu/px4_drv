@@ -92,6 +92,7 @@ python3 tools/tune_latency.py --json DriverHost_PX4.log
   - 受信方法は [ケーブルテレビ (ISDB-C) / スカパー！プレミアムサービス光 (J.83B) の受信](#ケーブルテレビ-isdb-c--スカパープレミアムサービス光-j83b-の受信) を参照のこと
 - Siano RIO 系の PX-S1UD V2.0 / PX-Q1UD に対応し、inf ファイルを追加 (実験的)
 - MyGica T230C (USB `0572:c68a`) の ISDB-C 受信に対応し、inf ファイルを追加 (実験的)
+- Sony CECH-ZD1 J (torne) の ISDB-T 受信と、内蔵 B-CAS カードスロットの WinSCard 対応を追加
 - DriverHost_PX4 に、ログレベル・カテゴリ・JSON Lines 形式の出力、TS 統計、選局から最初の TS までの時間の内訳、USB 転送履歴を追加
 
 #### 設定ファイル・ドライバ構成ファイルの改善
@@ -309,7 +310,7 @@ BonDriver と同じフォルダに DriverHost_PX4.exe / DriverHost_PX4.ini / it9
 
 PX-S1UD V2.0、PX-Q1UD、MyGica T230C は内蔵カードリーダーを搭載していないため、B-CAS カードには外付けカードリーダーが必要です。
 
-Sony CECH-ZD1 J の内蔵カードスロットはまだ統合していないため、torne の受信 TS を復号する場合も外付けカードリーダーを使ってください。
+Sony CECH-ZD1 J の内蔵 B-CAS カードスロットも `Sony CECH-ZD1 J Smart Card Reader` として利用できます。torne は地上デジタル専用で、BS / CS の受信には対応していません。
 
 機種別の BonDriver フォルダに同梱されている `WinSCard.dll` を、TVTest や EDCB など、B-CAS カードを利用するアプリケーションの実行ファイルと同じフォルダにコピーしてください。
 
@@ -336,6 +337,8 @@ Sony CECH-ZD1 J の内蔵カードスロットはまだ統合していないた�
 > [!TIP]  
 > **PC に複数のチューナーを接続している場合、TVTest では複数の内蔵カードリーダーを認識します。** B-CAS カードを挿入したチューナーの内蔵カードリーダーを選択してください。  
 > **内蔵カードリーダーを使うために、PC に接続されているすべてのチューナーに B-CAS カードを挿入する必要はありません。** 内蔵カードリーダーは、受信中チューナーと異なるデバイスでも利用できます。
+
+torne では受信に使う `BonDriver_Torne.dll` と B-CAS カードを挿したリーダーを、TVTest で別々に選べます。TS プロセッサーの「デフォルトフィルター」で `Sony CECH-ZD1 J Smart Card Reader` を選び、TVTest を再起動してください。
 
 > [!NOTE]  
 > `WinSCard.dll` は必要に応じて同じフォルダの `DriverHost_PX4.exe` を起動し、内蔵カードリーダーとの通信を仲介します。  
@@ -976,6 +979,8 @@ C 専用オプションを T/S と併用した場合と、値が範囲外の場�
 > `--b25` を使用する場合は、macOS に接続された PC/SC 対応 IC カードリーダーに B-CAS カードを挿入してください。  
 > macOS の PC/SC フレームワーク (`PCSC.framework`) を使用するため、追加のドライバやライブラリは不要です。
 
+torne の内蔵カードスロットを macOS の PC/SC アプリケーションで使う場合は、[macOS / Linux 用 IFD ハンドラー](pcsc/README.md)を導入してください。DriverHost_PX4 を先に起動しておく必要があります。
+
 ### 7. mirakurun との連携
 
 `mirakurun` の設定ファイル (`tuners.yml`) に以下のように記述することで、mirakurun 経由で EPGStation や Chinachu から利用できます。
@@ -1180,7 +1185,7 @@ Windows では、BonDriver_PX4-S.ini に記載の `LNBPower=0` を `LNBPower=1` 
 
 ### 内蔵カードリーダーやリモコンについて
 
-WinUSB 版と Linux 版のどちらでも、各種対応デバイスに内蔵されているカードリーダーを利用できます (Linux 版は pcsc-lite 用の [IFD ハンドラー](pcsc/README.md) の導入が必要です)。リモコンの操作には対応していません。
+WinUSB 版、macOS 版、Linux 版で対応デバイスの内蔵カードリーダーを PC/SC リーダーとして利用できます。Windows はアプリケーションローカルの `WinSCard.dll`、macOS / Linux は [IFD ハンドラー](pcsc/README.md)を使います。リモコンの操作には対応していません。
 
 ### e-Better DTV02-1T1S-U について
 

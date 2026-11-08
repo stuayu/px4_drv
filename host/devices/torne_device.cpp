@@ -65,6 +65,11 @@ int TorneDevice::Init()
 	std::lock_guard<std::recursive_mutex> lock(mutex_);
 	if (initialized_)
 		return -EALREADY;
+#if defined(_WIN32) || defined(_WIN64)
+	control_event_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+	if (!control_event_)
+		return -EIO;
+#endif
 	const auto &config = device_def_.configs;
 	const unsigned int packets = util::wtoui(config.Get(L"ReceiverMaxPackets", L"16384"));
 	max_urbs_ = util::wtoui(config.Get(L"TorneMaxUrbs", L"8"));
@@ -80,7 +85,16 @@ int TorneDevice::Init()
 		&TorneDevice::NowCallback,
 		&TorneDevice::LogCallback,
 	};
+	static const struct torne_card_io_ops card_io_ops = {
+		&TorneDevice::CardRead32Callback,
+		&TorneDevice::CardWrite32Callback,
+		&TorneDevice::CardLockCallback,
+		&TorneDevice::CardUnlockCallback,
+		&TorneDevice::CardSleepCallback,
+		&TorneDevice::NowCallback,
+	};
 	torne_bridge_init(&bridge_, &ops, this);
+	torne_card_port_init(&card_port_, &card_io_ops, this);
 	int ret = torne_bridge_start(&bridge_);
 	if (ret) {
 		msg_err("torne bridge start failed: %d\n", ret);
@@ -145,8 +159,11 @@ void TorneDevice::Term()
 {
 	if (initialized_.exchange(false) && receiver_)
 		receiver_manager_.Unregister(receiver_.get());
+	std::shared_ptr<ReceiverBase::StreamBuffer> failed_buffer;
 	{
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
+		/* 終了処理の間はカード UART の新しいレジスター操作を受け付けない。 */
+		std::lock_guard<std::mutex> card_lock(card_uart_mutex_);
 		if (bus_initialized_ && streaming_)
 			itedtv_bus_stop_streaming(&stream_bus_);
 		streaming_ = false;
@@ -164,14 +181,24 @@ void TorneDevice::Term()
 			buffer_->Stop();
 		buffer_started_ = false;
 		receiver_open_ = false;
+		available_ = false;
+		card_open_ = false;
+		failed_buffer = buffer_;
 	}
-	SetAvailability(false);
+	if (failed_buffer)
+		failed_buffer->NotifyStreamFailure();
 	{
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
 		if (bus_initialized_) {
 			itedtv_bus_term(&stream_bus_);
 			bus_initialized_ = false;
 		}
+#if defined(_WIN32) || defined(_WIN64)
+		if (control_event_) {
+			CloseHandle(control_event_);
+			control_event_ = nullptr;
+		}
+#endif
 		receiver_.reset();
 		buffer_.reset();
 		bridge_started_ = false;
@@ -182,9 +209,21 @@ void TorneDevice::Term()
 
 void TorneDevice::SetAvailability(bool available)
 {
-	available_ = available;
-	if (!available && buffer_)
-		buffer_->NotifyStreamFailure();
+	std::shared_ptr<ReceiverBase::StreamBuffer> failed_buffer;
+	{
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
+		available_ = available;
+		if (!available) {
+			card_open_ = false;
+			failed_buffer = buffer_;
+		}
+	}
+	if (!available) {
+		/* 切断前に進行中の UART レジスター列を回収する。以後の要求は lock callback が拒否する。 */
+		std::lock_guard<std::mutex> card_lock(card_uart_mutex_);
+	}
+	if (failed_buffer)
+		failed_buffer->NotifyStreamFailure();
 }
 
 ReceiverBase *TorneDevice::GetReceiver(int id) const
@@ -192,6 +231,61 @@ ReceiverBase *TorneDevice::GetReceiver(int id) const
 	if (id != 0)
 		throw std::out_of_range("receiver id out of range");
 	return receiver_.get();
+}
+
+int TorneDevice::OpenCard()
+{
+	if (!available_ || !bridge_started_)
+		return -ENODEV;
+	bool expected = false;
+	return card_open_.compare_exchange_strong(expected, true) ? 0 : -EALREADY;
+}
+
+void TorneDevice::CloseCard()
+{
+	if (!card_open_.exchange(false) || !available_ || !bridge_started_)
+		return;
+	/* PC/SC が閉じた後はカード UART の VCC を停止する。基板電源は torne と共有しない。 */
+	torne_card_power_down(&card_port_);
+}
+
+int TorneDevice::DetectCard(bool &detected)
+{
+	if (!card_open_)
+		return -ENODEV;
+	return torne_card_detect(&card_port_, &detected);
+}
+
+int TorneDevice::ResetCard()
+{
+	return card_open_ ? torne_card_reset(&card_port_) : -ENODEV;
+}
+
+int TorneDevice::SetCardBaudrate(std::uint32_t baudrate)
+{
+	return card_open_ ? torne_card_set_baudrate(&card_port_, baudrate) : -ENODEV;
+}
+
+int TorneDevice::IsCardDataReady(bool &ready)
+{
+	if (!card_open_)
+		return -ENODEV;
+	return torne_card_rx_ready(&card_port_, &ready);
+}
+
+int TorneDevice::ReadCardData(std::uint8_t *buf, std::uint8_t &len)
+{
+	return card_open_ ? torne_card_read(&card_port_, buf, &len) : -ENODEV;
+}
+
+int TorneDevice::WriteCardData(const std::uint8_t *buf, std::uint8_t len)
+{
+	return card_open_ ? torne_card_write(&card_port_, buf, len) : -ENODEV;
+}
+
+int TorneDevice::SetCardIoTimeout(std::uint32_t timeout_ms)
+{
+	return card_open_ ? torne_card_port_set_timeout(&card_port_, timeout_ms) : -ENODEV;
 }
 
 unsigned int TorneDevice::ControlTimeout() const noexcept
@@ -214,18 +308,28 @@ int TorneDevice::ControlCallback(void *context, u8 request_type, u16 value,
 }
 
 int TorneDevice::Control(u8 request_type, u16 value, u16 index,
-			 void *buffer, u16 length)
+			 void *buffer, u16 length, unsigned int timeout_ms)
 {
 	if (!available_)
 		return -ENODEV;
 	if (length > 64 || (length && !buffer))
 		return -EINVAL;
-	const unsigned int timeout = ControlTimeout();
+	const unsigned int timeout = timeout_ms ?
+		std::min<unsigned int>(timeout_ms, kControlTimeoutMs) : ControlTimeout();
 	if (!timeout)
 		return -ETIMEDOUT;
+	const auto lock_started = std::chrono::steady_clock::now();
+	std::unique_lock<std::timed_mutex> control_lock(control_mutex_, std::defer_lock);
+	if (!control_lock.try_lock_for(std::chrono::milliseconds(timeout)))
+		return -ETIMEDOUT;
+	const auto waited = std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::steady_clock::now() - lock_started).count();
+	if (waited >= timeout)
+		return -ETIMEDOUT;
+	const unsigned int transfer_timeout = timeout - static_cast<unsigned int>(waited);
 #ifdef __APPLE__
 	const int ret = libusb_control_transfer(usb_dev_.handle, request_type, 0xbc,
-		value, index, static_cast<unsigned char *>(buffer), length, timeout);
+		value, index, static_cast<unsigned char *>(buffer), length, transfer_timeout);
 	if (ret < 0) {
 		if (ret == LIBUSB_ERROR_TIMEOUT)
 			return -ETIMEDOUT;
@@ -237,16 +341,40 @@ int TorneDevice::Control(u8 request_type, u16 value, u16 index,
 	}
 	return ret;
 #else
+	if (!control_event_ || !ResetEvent(control_event_))
+		return -EIO;
 	WINUSB_SETUP_PACKET setup = {};
 	setup.RequestType = request_type;
 	setup.Request = 0xbc;
 	setup.Value = value;
 	setup.Index = index;
 	ULONG transferred = 0;
+	OVERLAPPED overlapped = {};
+	overlapped.hEvent = control_event_;
 	if (!WinUsb_ControlTransfer(usb_dev_.winusb, setup,
 				    static_cast<PUCHAR>(buffer), length,
-				    &transferred, nullptr)) {
-		const DWORD error = GetLastError();
+				    &transferred, &overlapped)) {
+		DWORD error = GetLastError();
+		if (error == ERROR_IO_PENDING) {
+			const DWORD wait = WaitForSingleObject(overlapped.hEvent, transfer_timeout);
+			if (wait == WAIT_TIMEOUT) {
+				if (!CancelIoEx(usb_dev_.dev, &overlapped) && GetLastError() != ERROR_NOT_FOUND)
+					msg_warn("torne: USB 制御転送の timeout 後、キャンセル完了を待っています\n");
+				WaitForSingleObject(overlapped.hEvent, INFINITE);
+				return -ETIMEDOUT;
+			}
+			if (wait != WAIT_OBJECT_0) {
+				CancelIoEx(usb_dev_.dev, &overlapped);
+				WaitForSingleObject(overlapped.hEvent, INFINITE);
+				return -EIO;
+			}
+			if (!GetOverlappedResult(usb_dev_.dev, &overlapped, &transferred, FALSE))
+				error = GetLastError();
+			else
+				error = ERROR_SUCCESS;
+		}
+		if (error == ERROR_SUCCESS)
+			return static_cast<int>(transferred);
 		if (error == ERROR_SEM_TIMEOUT)
 			return -ETIMEDOUT;
 		if (error == ERROR_DEVICE_NOT_CONNECTED || error == ERROR_NO_SUCH_DEVICE)
@@ -257,6 +385,82 @@ int TorneDevice::Control(u8 request_type, u16 value, u16 index,
 	}
 	return static_cast<int>(transferred);
 #endif
+}
+
+int TorneDevice::CardRead32Callback(void *context, u32 address, u32 *value,
+				    unsigned int timeout_ms)
+{
+	return static_cast<TorneDevice *>(context)->CardRead32(address, value, timeout_ms);
+}
+
+int TorneDevice::CardWrite32Callback(void *context, u32 address, u32 value,
+				     unsigned int timeout_ms)
+{
+	return static_cast<TorneDevice *>(context)->CardWrite32(address, value, timeout_ms);
+}
+
+int TorneDevice::CardLockCallback(void *context)
+{
+	auto *device = static_cast<TorneDevice *>(context);
+	try {
+		device->card_uart_mutex_.lock();
+	} catch (...) {
+		return -EDEADLK;
+	}
+	if (!device->available_) {
+		device->card_uart_mutex_.unlock();
+		return -ENODEV;
+	}
+	return 0;
+}
+
+void TorneDevice::CardUnlockCallback(void *context)
+{
+	static_cast<TorneDevice *>(context)->card_uart_mutex_.unlock();
+}
+
+void TorneDevice::CardSleepCallback(void *, unsigned int milliseconds)
+{
+	std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+}
+
+int TorneDevice::CardRead32(u32 address, u32 *value, unsigned int timeout_ms)
+{
+	if (!value || !available_ || !bridge_started_)
+		return -ENODEV;
+	std::uint8_t bytes[4] = {};
+	const u16 request_value = static_cast<u16>(((address >> 8) & 0xff00) |
+		(address >> 24));
+	const u16 request_index = static_cast<u16>(address);
+	const int ret = Control(0xc0, request_value, request_index, bytes,
+		static_cast<u16>(sizeof(bytes)), timeout_ms);
+	if (ret < 0)
+		return ret;
+	if (ret != static_cast<int>(sizeof(bytes)))
+		return -EIO;
+	*value = static_cast<u32>(bytes[0]) << 24 | static_cast<u32>(bytes[1]) << 16 |
+		static_cast<u32>(bytes[2]) << 8 | bytes[3];
+	return 0;
+}
+
+int TorneDevice::CardWrite32(u32 address, u32 value, unsigned int timeout_ms)
+{
+	if (!available_ || !bridge_started_)
+		return -ENODEV;
+	std::uint8_t bytes[4] = {
+		static_cast<std::uint8_t>(value >> 24),
+		static_cast<std::uint8_t>(value >> 16),
+		static_cast<std::uint8_t>(value >> 8),
+		static_cast<std::uint8_t>(value),
+	};
+	const u16 request_value = static_cast<u16>(((address >> 8) & 0xff00) |
+		(address >> 24));
+	const u16 request_index = static_cast<u16>(address);
+	const int ret = Control(0x40, request_value, request_index, bytes,
+		static_cast<u16>(sizeof(bytes)), timeout_ms);
+	if (ret < 0)
+		return ret;
+	return ret == static_cast<int>(sizeof(bytes)) ? 0 : -EIO;
 }
 
 int TorneDevice::BulkCallback(void *context, u8 endpoint, void *buffer,

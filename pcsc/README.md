@@ -1,13 +1,13 @@
-# Linux 版内蔵カードリーダー (IFD ハンドラー) 設計資料
+# macOS / Linux 版内蔵カードリーダー (IFD ハンドラー) 設計資料
 
-この文書は、Linux 版の内蔵カードリーダー対応を保守する開発者に向けて、実装の目的、責務の境界、壊してはいけない条件、検証方法を記録したものです。  
+この文書は、macOS / Linux 版の内蔵カードリーダー対応を保守する開発者に向けて、実装の目的、責務の境界、壊してはいけない条件、検証方法を記録したものです。
 利用者向けの導入手順はリポジトリルートの [README.md](../README.md#4-内蔵-b-cas-カードリーダーの利用) を参照してください。  
-Windows 版の設計は [WinSCard_PX4 設計資料](../winusb/src/WinSCard_PX4/README.md) にあり、T=1 の実装は Windows 版と Linux 版で共有しています。
+Windows 版の設計は [WinSCard_PX4 設計資料](../winusb/src/WinSCard_PX4/README.md) にあります。ATR と T=1 の状態機械は Windows / macOS / Linux で [`smart_card.cpp`](../host/core/smart_card.cpp) を共有します。
 
 ## 解決する問題
 
-px4_drv が扱う PLEX 製品と e-Better 製品の内蔵カードリーダーは、USB の CCID デバイスとして接続されていません。  
-カードとは、IT930x 系の USB ブリッジの制御コマンドを使い、ブリッジの UART を通してデータをやり取りします。  
+px4_drv が扱う PLEX 製品、e-Better 製品、Sony CECH-ZD1 J の内蔵カードリーダーは、USB の CCID デバイスとして接続されていません。
+カードとは USB ブリッジの制御コマンドを使い、ブリッジ内の UART を通してデータをやり取りします。
 このため、Linux 標準の pcsc-lite と `libccid` の組み合わせでは、内蔵カードリーダーを列挙できません。
 
 Linux 版は、カーネルモジュールがカードリーダーごとに `/dev/px4card/<ID>` を作り、pcsc-lite の pcscd が読み込む IFD ハンドラー (`libifd-px4.so`) がそれを使う構成です。  
@@ -30,7 +30,7 @@ pcscd はリーダーのドライバーを追加する仕組み (IFD ハンド�
 
 このうち、TS の受信に影響を与えないことが最優先です。
 
-## 構成
+## Linux の構成
 
 ```text
 アプリケーション → libpcsclite → pcscd → libifd-px4.so (IFD ハンドラー)
@@ -51,9 +51,12 @@ ioctl のコマンドの振り分けと `it930x_bcas_*()` の呼び出しは、�
 | 項目 | 内容 |
 |---|---|
 | `it930x` | カードの UART とカード検出の GPIO を持つ IT930x のブリッジ |
-| `lock` | チューナーの制御と共有する機種のロック (カードの操作中は保持し続ける) |
+| `operations` | IT930x 以外のブリッジ用の検出・reset・UART 操作 callback (通常は `NULL`) |
+| `lock` | IT930x バックエンドでチューナー制御と共有するロック。`operations` 使用時は callback が範囲を管理 |
 | `available` | USB 切断で 0 になる機種の利用可能状態 |
 | `set_power` | チューナーと共有する基板電源の、カード側の参照を取得・解放する関数 (カードに基板電源が要らない機種は `NULL`) |
+
+Sony CECH-ZD1 J は IT930x の代わりに `struct px4_card_backend.operations` を使います。UART レジスター1回の read/write には `card_uart_lock`、USB 制御転送1回には `control_lock` を取り、選局用 `operation_lock` はカード通信に使いません。ATR / T=1 のポーリングと reset の待機中はどちらのロックも保持しません。MB86H47A 固有の制御は [`torne_card.c`](../driver/common/torne/torne_card.c) が担います。
 
 ロックは、`px4_card.c` 自身のロック (open・ioctl・close と登録の解除を直列化する) を先に取り、機種のロックを後に取る順序で統一しています。
 
@@ -71,6 +74,14 @@ pcscd はカードの有無の問い合わせ (`IFDHICCPresence()`) が失敗す
 そのため、1回の USB の一時的な失敗でも、既存の接続の送信が `SCARD_E_PROTO_MISMATCH` で失敗し続け、接続し直さないアプリケーションは復号を再開できません。  
 IFD ハンドラーは USB 切断以外の失敗ではその場で1回だけ検出し直し、失敗を pcscd のログに記録します。  
 続けて失敗した場合はエラーを返し、カードの状態を監視するアプリケーションにリーダーの異常を伝えます。
+
+## macOS の IFD ハンドラー
+
+macOS 用 bundle は `ifdhandler_macos.cpp` と `Info-macos.plist` で構成し、Sony CECH-ZD1 J を登録します。IFD ハンドラーは USB を直接開かず、`PX4_RUNTIME_DIR` の `px4_card_pipe.sock` 経由で DriverHost_PX4 の CardServer へ PC/SC の `STATUS`、`RESET`、`TRANSMIT` を渡します。DriverHost_PX4 が USB ブリッジの唯一の所有者となり、チューナー受信とカード通信を同じ機器状態で直列化します。
+
+PC/SC の USB `DeviceName` からバス番号とデバイス番号を読み取れる場合は、DriverHost_PX4 が使う同じ `BUS:ADDRESS` から reader ID を照合します。同一機種が複数台あり、一意に照合できないときは誤ったカードへ接続せず IFD の登録を失敗させます。DeviceName が1台の Torne しか特定しない場合は、その候補を選びます。
+
+macOS では Xcode Command Line Tools がある環境で `make -C pcsc macos-bundle` を実行すると `ifd-px4.bundle` を作れます。導入は `sudo make -C pcsc install` で行えます。配置先を変える場合は `MACOS_IFD_DIR` を指定します。DriverHost_PX4 を起動してから PC/SC アプリケーションを開き、DriverHost と PC/SC プロセスで `PX4_RUNTIME_DIR` を変える場合は同じディレクトリを指定してください。Mac 用の IFD API 宣言は [`vendor/ifdhandler.h`](vendor/ifdhandler.h) に含み、BSD 3-Clause の出典とハッシュを同じ `vendor/README.md` に記録しています。
 
 pcscd は USB の接続を検出すると、[`Info.plist`](Info.plist) の VID と PID が一致する機器についてこの IFD ハンドラーを読み込みます。  
 IFD ハンドラーは、渡された USB のバス番号とデバイス番号を sysfs の `/sys/class/px4card/<ID>` の親と照合し、その `uevent` の `DEVNAME` から開くデバイスファイルを決めます。  
@@ -100,6 +111,8 @@ PX-MLT5U は未発売の機種で、公式の Windows 用ドライバーに定�
 同じ名前が既に使われている場合は、後から登録する側の末尾へ `-1` 、`-2` のように空いている番号を付けます。  
 カードリーダーは px4_drv が登録する `px4card` クラスのデバイスで、sysfs では `/sys/class/px4card/<ID>` 、udev の規則では `SUBSYSTEM=="px4card"` として現れます。  
 汎用の misc クラスを使うとクラスの中に `px4card` の階層を作れず、sysfs の名前とデバイスファイルの名前が食い違うため、専用のクラスにしています。
+
+Sony CECH-ZD1 J は USB シリアル番号を持たないため、Linux では USB ポート経路をデバイス ID に使います。別の USB ポートへ移すと ID が変わります。
 
 デバイスファイルの権限は `pcscd` グループの `0660` です。  
 デバイスファイルを開くのは pcscd だけで、pcsc-lite 2.4 以降は systemd の下の pcscd が `pcscd` ユーザーで動くため、libccid の規則と同じくこのグループに読み書きを許可しています。  
@@ -147,13 +160,14 @@ pcscd を起動し直すと、ID の入った名前になります。
 | `PX4_CARD_RX_READY` | `__u32` (出力) | カードの応答を受信し終えていれば 1 、まだなら 0 を返す |
 | `PX4_CARD_READ` | `struct px4_card_frame` (入出力) | `length` に `data` の容量を渡し、実際の受信長とデータが返る |
 | `PX4_CARD_WRITE` | `struct px4_card_frame` (入力) | `data` の先頭から `length` バイトを1つの UART フレームとして送信する |
+| `PX4_CARD_SET_TIMEOUT` | `__u32` (入力) | 次のカード I/O の絶対期限までの残り時間を millisecond で設定する (対応機種のみ使用) |
 
 `struct px4_card_frame` は `__u8 length` と `__u8 data[255]` だけの 256 バイトで、32bit と 64bit のどちらのユーザー空間でも同じ配置になり、パディングもありません。  
 `READ` と `WRITE` の `length` は1以上で、0 は `EINVAL` になります。  
 電源を入れていない状態で UART を操作するコマンドは `EHOSTDOWN` を、USB 切断後のコマンドは `ENODEV` を返します。
 
 カーネルモジュール (DKMS) と IFD ハンドラー (deb) は別々に更新されるので、公開したコマンドの番号・引数・意味は変えず、機能は新しい番号のコマンドとして追加します。  
-古いカーネルモジュールは定義していないコマンドの番号に `ENOTTY` を返し、IFD ハンドラーはそのことを pcscd のログに残します。  
+古いカーネルモジュールは未対応コマンドの番号に `ENOTTY` を返します。追加した `PX4_CARD_SET_TIMEOUT` は任意の期限伝達用なので、IFD ハンドラーは `ENOTTY` の場合に既定の転送期限を使います。
 番号が変わらない限り意味も変わらないので、ABI のバージョン番号や予約フィールド (reserved) は持たせていません。
 
 ## 基板電源の取り決め
@@ -199,14 +213,14 @@ T=1 の連番と再送の状態は1つのセッションだけが持てるため
 
 ## ATR と T=1
 
-ATR の解析、通信速度の選択、T=1 の状態機械は Windows 版と共有する `smart_card.cpp` が担当し、ACAS を含む取り決めは [WinSCard_PX4 設計資料](../winusb/src/WinSCard_PX4/README.md#atr-と-t1) に従います。  
+ATR の解析、通信速度の選択、T=1 の状態機械は Windows 版と共有する `smart_card.cpp` が担当し、ACAS を含む取り決めは [WinSCard_PX4 設計資料](../winusb/src/WinSCard_PX4/README.md#atr-と-t1) に従います。
 状態遷移の試験 (`smart_card_state_test.cpp`) も共有しているため、T=1 の修正は Windows 版と Linux 版の両方へ同時に反映されます。
 
 ## タイムアウト
 
-APDU 全体の絶対期限は、Windows 版と同じく `smart_card.cpp` が操作の合間に検査するので、ioctl の引数は期限を持っていません。  
-1回の ioctl は、既存の USB 制御転送のタイムアウト (モジュールのパラメーター `ctrl_timeout` で、初期値は 3000ms) で打ち切られます。  
-T=1 の待機をカーネルへ置くと、TS 受信と共有する機種のロックを長く保持することになるため、受信の完了を待つループはユーザー空間に置いています。
+APDU 全体の絶対期限は `smart_card.cpp` が操作の合間に検査し、残り時間を `CardDevice` へ渡します。torne の IFD は `PX4_CARD_SET_TIMEOUT` ioctl で残り時間をカーネルへ伝え、各 UART レジスター転送は同じ期限の残りを使います。1回の USB 制御転送は最大 1000ms で打ち切られます。
+
+既存 IT930x 機器には `PX4_CARD_SET_TIMEOUT` を持たない古い kernel module があります。IFD はこの任意 ioctl が `ENOTTY` を返した場合にだけ既定値を使い、既存機器の転送経路を維持します。T=1 の待機ループは USB / UART ロックを保持しないユーザー空間に置いています。
 
 ## USB 切断とデバイスの寿命
 

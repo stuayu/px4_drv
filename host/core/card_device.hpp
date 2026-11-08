@@ -21,6 +21,12 @@ public:
 	virtual int ReadCardData(std::uint8_t *buf, std::uint8_t &len) = 0;
 	/* len は buf から送信するバイト数を表す */
 	virtual int WriteCardData(const std::uint8_t *buf, std::uint8_t len) = 0;
+	/* 直後のカード I/O が同じ絶対期限で終わるよう、残り時間を下位層へ渡す */
+	virtual int SetCardIoTimeout(std::uint32_t timeout_ms)
+	{
+		(void)timeout_ms;
+		return 0;
+	}
 };
 
 } // namespace px4

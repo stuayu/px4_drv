@@ -42,5 +42,7 @@ struct px4_card_frame {
 #define PX4_CARD_RX_READY	_IOR(0x8d, 0x45, __u32)
 #define PX4_CARD_READ		_IOWR(0x8d, 0x46, struct px4_card_frame)
 #define PX4_CARD_WRITE		_IOW(0x8d, 0x47, struct px4_card_frame)
+/* 直後のカード I/O の残り時間を millisecond で指定する。旧モジュールでは ENOTTY の場合に既定値を使う */
+#define PX4_CARD_SET_TIMEOUT	_IOW(0x8d, 0x48, __u32)
 
 #endif

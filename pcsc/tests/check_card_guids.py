@@ -14,9 +14,11 @@ assert len(actual) == len(entries), 'Duplicate PID in px4_card_guids'
 expected = {}
 for inf in sorted((root / 'winusb/pkg/inf').glob('*.inf')):
     text = inf.read_text(encoding='utf-8-sig')
-    pids = set(re.findall(r'USB\\VID_0511&PID_([0-9a-f]{4})', text, re.IGNORECASE))
-    # MyGica T230C や Siano RIO など VID 0511 以外の INF は、内蔵カードリーダーを持たず px4_card の対象外
-    if not pids and not re.search(r'USB\\VID_0511&', text, re.IGNORECASE):
+    usb_ids = set(re.findall(r'USB\\VID_([0-9a-f]{4})&PID_([0-9a-f]{4})', text, re.IGNORECASE))
+    # VID 0511 の対応機器と、内蔵カードリーダーを持つ Sony CECH-ZD1 J だけを照合する。
+    pids = {pid for vendor, pid in usb_ids
+            if vendor.lower() == '0511' or (vendor.lower(), pid.lower()) == ('054c', '04b2')}
+    if not pids:
         continue
     guids = set(re.findall(r'DeviceInterfaceGUIDs,[^"\n]*"(\{[0-9a-f-]+\})"', text, re.IGNORECASE))
     assert pids and len(guids) == 1, f'{inf.name}: expected PIDs and one interface GUID'

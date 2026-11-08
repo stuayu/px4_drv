@@ -149,6 +149,7 @@ set(DRIVER_C_SRCS
     "${DRIVER_DIR}/common/bridge/t230c_usb.c"
     "${DRIVER_DIR}/common/torne/torne_bridge.c"
     "${DRIVER_DIR}/common/torne/torne_dib.c"
+    "${DRIVER_DIR}/common/torne/torne_card.c"
     "${DRIVER_DIR}/common/signal/signal_stat.c"
     "${DRIVER_DIR}/common/demod/cxd2856er.c"
     "${DRIVER_DIR}/common/demod/cxd2858er.c"
@@ -303,6 +304,17 @@ if(BUILD_TESTING)
         "${DRIVER_DIR}/common/torne/torne_bridge.c"
         "${DRIVER_DIR}/common/torne/torne_dib.c")
     add_test(NAME torne_core_cpp_link_test COMMAND torne_core_cpp_link_test)
+
+    add_executable(torne_card_uart_test
+        "${REPO_ROOT}/tests/torne_card_uart_test.c"
+        "${DRIVER_DIR}/common/torne/torne_card.c")
+    add_test(NAME torne_card_uart_test COMMAND torne_card_uart_test)
+
+    # 全機種共通の ATR / T=1 状態機械の模擬 I/O 回帰試験。
+    add_executable(smart_card_state_test
+        "${REPO_ROOT}/winusb/tests/smart_card_state_test.cpp"
+        "${HOST_SRC}/core/smart_card.cpp")
+    add_test(NAME smart_card_state_test COMMAND smart_card_state_test)
 
     # OS 間で機種の定義に差が無いことを確かめる (INI 2種類と Linux の USB ID 表)。
     set(PARITY_TEST_MACOS_CXX_SRCS ${MACOS_CXX_SRCS})

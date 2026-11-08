@@ -225,7 +225,7 @@ VID と PID だけからカードスロットの有無を推測せず、現在�
 ### ユーザー空間
 
 ユーザー空間には、pcsc-lite が読み込む IFD ハンドラーと、独立して試験できる T=1 プロトコル実装を追加します。  
-プロトコル実装は [`host/core/smart_card.cpp`](../host/core/smart_card.cpp) の状態遷移を移植し、Linux のファイル I/O を薄いアダプターとして接続します。
+プロトコル実装は [`host/core/smart_card.cpp`](../host/core/smart_card.cpp) の状態遷移を共有し、Linux のファイル I/O を薄いアダプターとして接続します。
 
 IFD ハンドラーは次の処理を担当します。  
 

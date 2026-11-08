@@ -1,10 +1,51 @@
 CXX ?= c++
 PKG_CONFIG ?= pkg-config
-PCSC_CFLAGS ?= $(shell $(PKG_CONFIG) --cflags libpcsclite)
-USBDROPDIR ?= $(shell $(PKG_CONFIG) --variable=usbdropdir libpcsclite)
 BUILD ?= build
 ROOT := ..
-# WinUSB 版・macOS 版と共有するカードの状態管理 (smart_card.cpp) は host/core にある
+UNAME_S := $(shell uname -s)
+
+ifeq ($(UNAME_S),Darwin)
+
+MACOS_SDK ?= $(shell xcrun --sdk macosx --show-sdk-path)
+MACOS_PCSC_HEADERS ?= $(MACOS_SDK)/System/Library/Frameworks/PCSC.framework/Versions/A/Headers
+MACOS_BUNDLE := $(BUILD)/ifd-px4.bundle/Contents
+MACOS_BINARY := $(MACOS_BUNDLE)/MacOS/libifd-px4.dylib
+MACOS_INFO := $(MACOS_BUNDLE)/Info.plist
+MACOS_IFD_DIR ?= /usr/libexec/SmartCardServices/drivers
+MACOS_SOURCES := ifdhandler_macos.cpp
+MACOS_HEADERS := $(ROOT)/host/common/card_command.hpp vendor/ifdhandler.h
+
+CPPFLAGS += -I$(ROOT)/host/common -Ivendor -I$(MACOS_PCSC_HEADERS) -I.
+CXXFLAGS ?= -O2 -g
+CXXFLAGS += -std=c++17 -Wall -Wextra -Wpedantic -pthread
+
+all: macos-bundle
+
+macos-bundle: $(MACOS_BINARY) $(MACOS_INFO)
+
+$(MACOS_BINARY): $(MACOS_SOURCES) $(MACOS_HEADERS) exports.macos | $(BUILD)
+	mkdir -p $(dir $@)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -bundle -Wl,-undefined,dynamic_lookup \
+		-Wl,-exported_symbols_list,exports.macos $(MACOS_SOURCES) -o $@
+
+$(MACOS_INFO): Info-macos.plist | $(BUILD)
+	mkdir -p $(dir $@)
+	cp $< $@
+
+$(BUILD):
+	mkdir -p $@
+
+install: macos-bundle
+	mkdir -p "$(DESTDIR)$(MACOS_IFD_DIR)/ifd-px4.bundle/Contents/MacOS"
+	install -m 0755 $(MACOS_BINARY) "$(DESTDIR)$(MACOS_IFD_DIR)/ifd-px4.bundle/Contents/MacOS/libifd-px4.dylib"
+	install -m 0644 $(MACOS_INFO) "$(DESTDIR)$(MACOS_IFD_DIR)/ifd-px4.bundle/Contents/Info.plist"
+
+.PHONY: all install macos-bundle
+
+else
+
+PCSC_CFLAGS ?= $(shell $(PKG_CONFIG) --cflags libpcsclite)
+USBDROPDIR ?= $(shell $(PKG_CONFIG) --variable=usbdropdir libpcsclite)
 SHARED := $(ROOT)/host/core
 CPPFLAGS += -I$(ROOT)/include -I$(SHARED) $(PCSC_CFLAGS)
 CPPFLAGS += -I.
@@ -46,3 +87,5 @@ install: all
 	install -D -m 0644 Info.plist $(DESTDIR)$(USBDROPDIR)/ifd-px4.bundle/Contents/Info.plist
 
 .PHONY: all check install integration-build
+
+endif

@@ -258,6 +258,7 @@
     <ClCompile Include="..\..\..\driver\common\bridge\t230c_usb.c" />
     <ClCompile Include="..\..\..\driver\common\torne\torne_bridge.c" />
     <ClCompile Include="..\..\..\driver\common\torne\torne_dib.c" />
+    <ClCompile Include="..\..\..\driver\common\torne\torne_card.c" />
     <ClCompile Include="..\..\..\driver\common\demod\si2168.c" />
     <ClCompile Include="..\..\..\driver\common\tuner\si2141.c" />
     <ClCompile Include="..\..\..\driver\common\ts\t230c_ts_sync.c" />
@@ -339,6 +340,7 @@
     <ClInclude Include="..\..\..\host\devices\t230c_silicon.hpp" />
     <ClInclude Include="..\..\..\driver\common\bridge\t230c_usb.h" />
     <ClInclude Include="..\..\..\driver\common\torne\torne_core.h" />
+    <ClInclude Include="..\..\..\driver\common\torne\torne_card.h" />
     <ClInclude Include="..\..\..\driver\common\torne\torne_dib.h" />
     <ClInclude Include="..\..\..\driver\common\torne\torne_regs.h" />
     <ClInclude Include="..\..\..\driver\common\torne\torne_fw_gen.h" />

@@ -71,7 +71,7 @@ Linux と Windows は [`driver/common/bridge/it930x.c`](../driver/it930x.c) と 
 2026年7月24日時点では、Windows 開発環境で実装可能な既知のカードリーダー修正は残っていないと判断しました。  
 この判断は、全機種と長期稼働を確認済みという意味ではなく、現行コードから導ける修正と、Windows 検証環境で実行できる試験を完了したという意味です。  
 
-Linux 実装は、現在の [`smart_card.cpp`](../host/core/smart_card.cpp) をプロトコルの基準にします。
+Linux 実装は、全機種共通の [`smart_card.cpp`](../host/core/smart_card.cpp) をプロトコルの基準にします。
 yyya-nico 氏や makeding 氏の状態機械へ置き換える案は採用しませんでした。  
 
 ## ACAS 対応

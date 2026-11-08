@@ -12,7 +12,9 @@
 #include <linux/workqueue.h>
 
 #include "itedtv_bus.h"
+#include "px4_card.h"
 #include "ptx_chrdev.h"
+#include "torne_card.h"
 #include "torne_core.h"
 #include "torne_dib.h"
 
@@ -27,9 +29,13 @@ struct torne_device {
 	struct ptx_chrdev_group *chrdev_group;
 	struct ptx_chrdev *chrdev;
 	struct mutex operation_lock;
+	struct mutex control_lock;
+	struct mutex card_uart_lock;
 	struct itedtv_bus stream_bus;
 	struct torne_bridge bridge;
 	struct torne_dib dib;
+	struct torne_card_port card_port;
+	struct px4_card *card;
 	struct torne_framer *framer;
 	u8 *ts_output;
 	spinlock_t stream_lock;

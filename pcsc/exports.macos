@@ -1,0 +1,10 @@
+_IFDHCreateChannelByName
+_IFDHCreateChannel
+_IFDHCloseChannel
+_IFDHGetCapabilities
+_IFDHSetCapabilities
+_IFDHICCPresence
+_IFDHPowerICC
+_IFDHSetProtocolParameters
+_IFDHTransmitToICC
+_IFDHControl

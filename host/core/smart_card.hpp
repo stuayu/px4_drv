@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 #pragma once
 
 #include <chrono>
@@ -39,13 +40,17 @@ private:
 		unsigned int block_timeout_ms = 500;
 	};
 
-	int ReadAtr(std::vector<std::uint8_t> &atr, AtrParameters &parameters);
+	int Reset(std::vector<std::uint8_t> &atr, const Deadline &deadline);
+	int SetCardIoTimeout(const Deadline &deadline) const;
+	int ReadAtr(std::vector<std::uint8_t> &atr, AtrParameters &parameters,
+		    const Deadline &deadline);
 	int WaitCardDataReady(const Deadline &deadline);
-	int DiscardPendingCardData();
+	int DiscardPendingCardData(const Deadline &deadline);
 	int ParseAtr(const std::vector<std::uint8_t> &atr,
 		     std::size_t &expected_length, AtrParameters &parameters) const;
-	int InitializeT1(bool resynchronize, std::uint8_t ifsd);
-	int SendBlock(std::uint8_t pcb, const std::uint8_t *data, std::size_t length);
+	int InitializeT1(bool resynchronize, std::uint8_t ifsd, const Deadline &deadline);
+	int SendBlock(std::uint8_t pcb, const std::uint8_t *data, std::size_t length,
+		       const Deadline &deadline);
 	int ReceiveBlock(std::uint8_t &pcb, std::vector<std::uint8_t> &data,
 			 const Deadline &deadline);
 	int ExchangeBlock(std::uint8_t pcb, const std::uint8_t *send_data,

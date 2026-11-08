@@ -1,8 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 #include "smart_card.hpp"
 
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <limits>
 #include <thread>
 
 namespace px4 {
@@ -67,6 +69,13 @@ int SmartCard::Open()
 
 	open_ = true;
 	bool detected = false;
+	const Deadline deadline = std::chrono::steady_clock::now() +
+		std::chrono::milliseconds(OPERATION_TIMEOUT_MS);
+	ret = SetCardIoTimeout(deadline);
+	if (ret) {
+		Close();
+		return ret;
+	}
 	ret = device_->DetectCard(detected);
 	if (ret) {
 		Close();
@@ -100,7 +109,14 @@ int SmartCard::GetStatus(bool &present, bool &initialized,
 	if (!open_)
 		return -ENODEV;
 
-	int ret = device_->DetectCard(present);
+	const Deadline deadline = std::chrono::steady_clock::now() +
+		std::chrono::milliseconds(ATR_TIMEOUT_MS);
+	int ret = SetCardIoTimeout(deadline);
+	if (ret) {
+		InvalidateSession();
+		return ret;
+	}
+	ret = device_->DetectCard(present);
 	if (ret) {
 		InvalidateSession();
 		return ret;
@@ -122,13 +138,22 @@ int SmartCard::GetStatus(bool &present, bool &initialized,
 
 int SmartCard::Reset(std::vector<std::uint8_t> &atr)
 {
+	return Reset(atr, std::chrono::steady_clock::now() +
+		std::chrono::milliseconds(ATR_TIMEOUT_MS + OPERATION_TIMEOUT_MS));
+}
+
+int SmartCard::Reset(std::vector<std::uint8_t> &atr, const Deadline &deadline)
+{
 	if (!open_)
 		return -ENODEV;
 
 	/* 途中で失敗しても以前のカードの通信状態を再利用させない */
 	InvalidateSession();
 	bool detected = false;
-	int ret = device_->DetectCard(detected);
+	int ret = SetCardIoTimeout(deadline);
+	if (ret)
+		return ret;
+	ret = device_->DetectCard(detected);
 	if (ret)
 		return ret;
 	if (!detected)
@@ -138,11 +163,16 @@ int SmartCard::Reset(std::vector<std::uint8_t> &atr)
 	for (unsigned int attempt = 0; attempt < 2; attempt++) {
 		/* 前回の不正 ATR を途中まで解析していても T=1 パラメータを次の試行へ残さない */
 		parameters = AtrParameters{};
+		ret = SetCardIoTimeout(deadline);
+		if (ret)
+			return ret;
 		ret = device_->ResetCard();
 		if (ret)
 			return ret;
 
-		ret = ReadAtr(atr, parameters);
+		const Deadline atr_deadline = (std::min)(deadline,
+			std::chrono::steady_clock::now() + std::chrono::milliseconds(ATR_TIMEOUT_MS));
+		ret = ReadAtr(atr, parameters, atr_deadline);
 		if (!ret)
 			break;
 		/* 一部機種は連続リセット時に UART の残留バイトを ATR より先に返すため、形式不正だけ再初期化する */
@@ -151,7 +181,9 @@ int SmartCard::Reset(std::vector<std::uint8_t> &atr)
 	}
 
 	/* 特定モードのカードは PPS を行わず、TA1 が指定した速度へ直接切り替える */
-	ret = device_->SetCardBaudrate(parameters.baudrate);
+	ret = SetCardIoTimeout(deadline);
+	if (!ret)
+		ret = device_->SetCardBaudrate(parameters.baudrate);
 	if (ret)
 		return ret;
 
@@ -163,7 +195,7 @@ int SmartCard::Reset(std::vector<std::uint8_t> &atr)
 	const bool is_acas = parameters.baudrate == 38400;
 	/* ACAS は IFS (254) から開始し、B-CAS は従来の RESYNCH を先に送る */
 	const std::uint8_t ifsd = is_acas ? 254 : (use_crc_ ? 250 : 251);
-	ret = InitializeT1(!is_acas, ifsd);
+	ret = InitializeT1(!is_acas, ifsd, deadline);
 	if (ret) {
 		InvalidateSession();
 		return ret;
@@ -172,11 +204,25 @@ int SmartCard::Reset(std::vector<std::uint8_t> &atr)
 	return 0;
 }
 
-int SmartCard::ReadAtr(std::vector<std::uint8_t> &atr, AtrParameters &parameters)
+int SmartCard::SetCardIoTimeout(const Deadline &deadline) const
+{
+	const auto now = std::chrono::steady_clock::now();
+	if (now >= deadline)
+		return -ETIMEDOUT;
+	const auto remaining = deadline - now;
+	auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(remaining);
+	if (milliseconds < remaining)
+		milliseconds += std::chrono::milliseconds(1);
+	const auto count = (std::min<std::int64_t>)(milliseconds.count(),
+		(std::numeric_limits<std::uint32_t>::max)());
+	return count > 0 ? device_->SetCardIoTimeout(static_cast<std::uint32_t>(count)) :
+		-ETIMEDOUT;
+}
+
+int SmartCard::ReadAtr(std::vector<std::uint8_t> &atr, AtrParameters &parameters,
+		      const Deadline &deadline)
 {
 	atr.clear();
-	auto deadline = std::chrono::steady_clock::now() +
-		std::chrono::milliseconds(ATR_TIMEOUT_MS);
 	std::size_t expected_length = 0;
 
 	while (std::chrono::steady_clock::now() < deadline) {
@@ -187,6 +233,9 @@ int SmartCard::ReadAtr(std::vector<std::uint8_t> &atr, AtrParameters &parameters
 
 		std::uint8_t chunk[33];
 		std::uint8_t chunk_length = static_cast<std::uint8_t>(sizeof(chunk));
+		ret = SetCardIoTimeout(deadline);
+		if (ret)
+			return ret;
 		ret = device_->ReadCardData(chunk, chunk_length);
 		if (ret)
 			return ret;
@@ -213,7 +262,10 @@ int SmartCard::WaitCardDataReady(const Deadline &deadline)
 	/* RX_LENGTH は受信途中でも増えるため、完成通知だけを期限まで待つ */
 	while (std::chrono::steady_clock::now() < deadline) {
 		bool ready = false;
-		int ret = device_->IsCardDataReady(ready);
+		int ret = SetCardIoTimeout(deadline);
+		if (ret)
+			return ret;
+		ret = device_->IsCardDataReady(ready);
 		if (ret || ready)
 			return ret;
 		std::this_thread::sleep_for(std::chrono::milliseconds(CARD_POLL_INTERVAL_MS));
@@ -222,7 +274,7 @@ int SmartCard::WaitCardDataReady(const Deadline &deadline)
 	return -ETIMEDOUT;
 }
 
-int SmartCard::DiscardPendingCardData()
+int SmartCard::DiscardPendingCardData(const Deadline &deadline)
 {
 	/*
 	 * 追加の待機を挟まず、今読める残余だけを捨てる
@@ -230,7 +282,10 @@ int SmartCard::DiscardPendingCardData()
 	 */
 	for (unsigned int count = 0; count < MAX_DISCARD_CHUNKS; count++) {
 		bool ready = false;
-		int ret = device_->IsCardDataReady(ready);
+		int ret = SetCardIoTimeout(deadline);
+		if (ret)
+			return ret;
+		ret = device_->IsCardDataReady(ready);
 		if (ret)
 			return ret;
 		if (!ready)
@@ -238,6 +293,9 @@ int SmartCard::DiscardPendingCardData()
 
 		std::uint8_t chunk[CARD_UART_FRAME_MAX_LENGTH];
 		std::uint8_t chunk_length = static_cast<std::uint8_t>(sizeof(chunk));
+		ret = SetCardIoTimeout(deadline);
+		if (ret)
+			return ret;
 		ret = device_->ReadCardData(chunk, chunk_length);
 		if (ret)
 			return ret;
@@ -366,15 +424,14 @@ int SmartCard::ParseAtr(const std::vector<std::uint8_t> &atr,
 	return 0;
 }
 
-int SmartCard::InitializeT1(bool resynchronize, std::uint8_t ifsd)
+int SmartCard::InitializeT1(bool resynchronize, std::uint8_t ifsd,
+			   const Deadline &deadline)
 {
 	send_sequence_ = 0;
 	receive_sequence_ = 0;
 
 	std::uint8_t pcb;
 	std::vector<std::uint8_t> data;
-	auto deadline = std::chrono::steady_clock::now() +
-		std::chrono::milliseconds(OPERATION_TIMEOUT_MS);
 	if (resynchronize) {
 		int ret = ExchangeBlock(T1_S_BLOCK | T1_S_RESYNCH, nullptr, 0, pcb,
 			data, deadline);
@@ -410,7 +467,7 @@ int SmartCard::InitializeT1(bool resynchronize, std::uint8_t ifsd)
 }
 
 int SmartCard::SendBlock(std::uint8_t pcb, const std::uint8_t *data,
-			 std::size_t length)
+			 std::size_t length, const Deadline &deadline)
 {
 	if (length > 254 || (length && !data))
 		return -EINVAL;
@@ -436,6 +493,9 @@ int SmartCard::SendBlock(std::uint8_t pcb, const std::uint8_t *data,
 
 	if (frame.size() > CARD_UART_FRAME_MAX_LENGTH)
 		return -EMSGSIZE;
+	int ret = SetCardIoTimeout(deadline);
+	if (ret)
+		return ret;
 	return device_->WriteCardData(frame.data(), static_cast<std::uint8_t>(frame.size()));
 }
 
@@ -454,6 +514,9 @@ int SmartCard::ReceiveBlock(std::uint8_t &pcb, std::vector<std::uint8_t> &data,
 
 		std::uint8_t chunk[255];
 		std::uint8_t chunk_length = static_cast<std::uint8_t>(sizeof(chunk));
+		ret = SetCardIoTimeout(deadline);
+		if (ret)
+			return ret;
 		ret = device_->ReadCardData(chunk, chunk_length);
 		if (ret)
 			return ret;
@@ -494,7 +557,7 @@ int SmartCard::ReceiveBlock(std::uint8_t &pcb, std::vector<std::uint8_t> &data,
 		 * 連結された応答が1回の ReadCardData() で読み切れないと FIFO へ残りが留まり、
 		 * 次のブロック受信の先頭へ混ざって連番不一致を起こす
 		 */
-		int discard_ret = DiscardPendingCardData();
+		int discard_ret = DiscardPendingCardData(deadline);
 
 		if (discard_ret)
 			return discard_ret;
@@ -530,7 +593,7 @@ int SmartCard::ExchangeBlock(std::uint8_t pcb, const std::uint8_t *send_data,
 	for (unsigned int retry = 0; retry < max_retries; retry++) {
 		if (std::chrono::steady_clock::now() >= deadline)
 			return -ETIMEDOUT;
-		int ret = SendBlock(pcb, send_data, send_length);
+		int ret = SendBlock(pcb, send_data, send_length, deadline);
 		if (ret)
 			return ret;
 
@@ -546,7 +609,7 @@ int SmartCard::ExchangeBlock(std::uint8_t pcb, const std::uint8_t *send_data,
 					return -EPROTO;
 				std::uint8_t multiplier = recv_data[0];
 				ret = SendBlock(T1_S_BLOCK | T1_S_RESPONSE | T1_S_WTX,
-						&multiplier, 1);
+						&multiplier, 1, deadline);
 				if (ret)
 					return ret;
 				ret = ReceiveBlock(recv_pcb, recv_data, deadline);
@@ -569,6 +632,14 @@ int SmartCard::Transmit(const std::uint8_t *send_buf, std::size_t send_len,
 	if (!open_)
 		return SMART_CARD_NO_MEDIUM;
 
+	/* APDU の期限には、未初期化セッションの検出・再初期化も含める。 */
+	auto deadline = std::chrono::steady_clock::now() +
+		std::chrono::milliseconds(OPERATION_TIMEOUT_MS);
+	int timeout_ret = SetCardIoTimeout(deadline);
+	if (timeout_ret) {
+		InvalidateSession();
+		return timeout_ret;
+	}
 	/* 接触不良や抜去を APDU 送信前に検出し、壊れたセッションを即座に破棄する */
 	bool detected = false;
 	int status_ret = device_->DetectCard(detected);
@@ -583,14 +654,12 @@ int SmartCard::Transmit(const std::uint8_t *send_buf, std::size_t send_len,
 	present_ = true;
 	if (!initialized_) {
 		std::vector<std::uint8_t> atr;
-		int reset_ret = Reset(atr);
+		int reset_ret = Reset(atr, deadline);
 		if (reset_ret)
 			return reset_ret;
 	}
 
 	/* WTX やブロック再送が続いても1回の APDU を有限時間で打ち切る */
-	auto deadline = std::chrono::steady_clock::now() +
-		std::chrono::milliseconds(OPERATION_TIMEOUT_MS);
 	/*
 	 * 通信失敗後は次の APDU でカードを再初期化し、壊れた連番を残さない
 	 * 送受信中の例外でも同じ後始末が要るため、破棄はスコープの終わりに任せる

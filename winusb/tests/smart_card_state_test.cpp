@@ -202,6 +202,11 @@ public:
 			return 0;
 		}
 		const std::uint8_t response[] = { 0x90, 0x00 };
+		if (wrong_nad_next_response) {
+			wrong_nad_next_response = false;
+			QueueBlock(response_pcb, response, sizeof(response), 0x01);
+			return 0;
+		}
 		last_response_pcb = response_pcb;
 		last_response.assign(response, response + sizeof(response));
 		QueueBlock(response_pcb, response, sizeof(response));
@@ -216,16 +221,22 @@ public:
 		return 0;
 	}
 
+	int SetCardIoTimeout(std::uint32_t timeout_ms) override
+	{
+		io_timeout_values.push_back(timeout_ms);
+		return 0;
+	}
+
 	void QueueBytes(std::initializer_list<std::uint8_t> bytes)
 	{
 		read_queue.insert(read_queue.end(), bytes.begin(), bytes.end());
 	}
 
 	void QueueBlock(std::uint8_t pcb, const std::uint8_t *data,
-		std::size_t data_length)
+		std::size_t data_length, std::uint8_t nad = 0)
 	{
 		std::vector<std::uint8_t> frame = {
-			0x00,
+			nad,
 			pcb,
 			static_cast<std::uint8_t>(data_length),
 		};
@@ -278,6 +289,7 @@ public:
 	bool duplicate_next_response = false;
 	bool large_duplicate_response = false;
 	bool max_duplicate_response = false;
+	bool wrong_nad_next_response = false;
 	bool lose_final_response = false;
 	bool final_response_lost = false;
 	unsigned int cached_resend_count = 0;
@@ -297,6 +309,7 @@ public:
 		0xb1, 0x7c, 0x45, 0x1f, 0x01, 0x9b,
 	};
 	std::uint32_t baudrate = 9600;
+	std::vector<std::uint32_t> io_timeout_values;
 	bool expected_crc = false;
 	std::vector<std::uint8_t> written_pcbs;
 	std::vector<std::uint8_t> ifs_values;
@@ -432,11 +445,15 @@ int main()
 
 	/* 正常な WTX が繰り返されても APDU 全体の期限を延長しない */
 	device->endless_wtx = true;
+	device->io_timeout_values.clear();
 	auto wtx_started = std::chrono::steady_clock::now();
 	response_length = sizeof(response);
 	succeeded = Check(card.Transmit(apdu, sizeof(apdu), response,
 		response_length) == -ETIMEDOUT &&
-		std::chrono::steady_clock::now() - wtx_started < std::chrono::seconds(5),
+		std::chrono::steady_clock::now() - wtx_started < std::chrono::seconds(5) &&
+		device->io_timeout_values.size() > 2 &&
+		device->io_timeout_values.front() <= 3000 &&
+		device->io_timeout_values.back() < device->io_timeout_values.front(),
 		"Repeated WTX requests extended the APDU indefinitely.") && succeeded;
 	device->endless_wtx = false;
 	response_length = sizeof(response);
@@ -560,6 +577,37 @@ int main()
 	succeeded = Check(unsupported_card.Open() == -EOPNOTSUPP &&
 		!unsupported_device->is_open,
 		"An unsupported TA1 value was accepted.") && succeeded;
+
+	/* ATR の UART FIFO が完成を通知する前に途中のバイト列を読まない */
+	auto atr_device = std::make_shared<MockCardDevice>();
+	atr_device->is_present = true;
+	atr_device->ready_delay_checks = 3;
+	px4::SmartCard atr_card(atr_device);
+	bool atr_present = false;
+	bool atr_initialized = false;
+	std::vector<std::uint8_t> delayed_atr;
+	succeeded = Check(atr_card.Open() == 0 &&
+		atr_card.GetStatus(atr_present, atr_initialized, delayed_atr) == 0 &&
+		atr_present && atr_initialized && delayed_atr.size() == 13 &&
+		!atr_device->read_called_before_ready,
+		"ATR bytes were read before the UART reported completion.") && succeeded;
+	atr_card.Close();
+
+	/* NAD 不一致の T=1 ブロックを拒否し、次の APDU は破棄済み状態から再初期化する */
+	auto nad_device = std::make_shared<MockCardDevice>();
+	nad_device->is_present = true;
+	px4::SmartCard nad_card(nad_device);
+	succeeded = Check(nad_card.Open() == 0, "NAD test card did not open.") && succeeded;
+	nad_device->wrong_nad_next_response = true;
+	response_length = sizeof(response);
+	succeeded = Check(nad_card.Transmit(apdu, sizeof(apdu), response,
+		response_length) == -EPROTO,
+		"A T=1 block with a mismatched NAD was accepted.") && succeeded;
+	response_length = sizeof(response);
+	succeeded = Check(nad_card.Transmit(apdu, sizeof(apdu), response,
+		response_length) == 0 && nad_device->reset_count == 2,
+		"A NAD failure reused the invalid T=1 session.") && succeeded;
+	nad_card.Close();
 
 	card.Close();
 	succeeded = Check(!device->is_open, "Closing the reader failed.") && succeeded;

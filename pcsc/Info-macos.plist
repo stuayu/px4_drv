@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>PX4CARD</string>
+	<key>CFBundleExecutable</key>
+	<string>libifd-px4.dylib</string>
+	<key>CFBundleIdentifier</key>
+	<string>org.px4-drv.ifd-px4</string>
+	<key>CFBundlePackageType</key>
+	<string>BNDL</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>1.0</string>
+	<key>ifdCapabilities</key>
+	<string>0x00000000</string>
+	<key>ifdManufacturerString</key>
+	<string>px4_drv contributors</string>
+	<key>ifdProductString</key>
+	<string>DriverHost_PX4 PC/SC proxy</string>
+	<key>ifdVendorID</key>
+	<array>
+		<string>0x054c</string>
+	</array>
+	<key>ifdProductID</key>
+	<array>
+		<string>0x04b2</string>
+	</array>
+	<key>ifdFriendlyName</key>
+	<array>
+		<string>Sony CECH-ZD1 J Smart Card Reader</string>
+	</array>
+	<key>ifdProtocolSupport</key>
+	<string>0x00000002</string>
+	<key>ifdVersionNumber</key>
+	<string>0x00000001</string>
+</dict>
+</plist>

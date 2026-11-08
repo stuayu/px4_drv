@@ -47,6 +47,7 @@ static const struct {
 	u16 product;
 	const char *guid;
 } px4_card_guids[] = {
+	{ 0x04b2, "{38e7a8c5-27d1-440d-9bcf-83e1b20fb92f}" },
 	{ 0x083f, "{6d78c843-49d8-4bb8-8dfa-286fdee4c8a3}" },
 	{ 0x084a, "{87b25983-d116-4ccf-8896-84d022fabd73}" },
 	{ 0x023f, "{47fc15e3-6791-4e24-8fbe-c4218eee0ad6}" },
@@ -80,7 +81,7 @@ static void px4_card_free(struct kref *ref)
 	kfree(card);
 }
 
-/* 機種のロックを保持した状態で呼ぶ */
+/* IT930x バックエンドでは機種のロックを保持した状態で呼ぶ */
 static int px4_card_set_power(struct px4_card *card, bool on)
 {
 	const struct px4_card_backend *backend = &card->backend;
@@ -92,7 +93,16 @@ static int px4_card_set_power(struct px4_card *card, bool on)
 	if (!on) {
 		/* 電源の停止は成否にかかわらず停止済みとして扱い、チューナー側の参照と食い違わせない */
 		card->powered = false;
-		return backend->set_power ? backend->set_power(backend->context, false) : 0;
+		if (backend->operations && backend->operations->power_off)
+			ret = backend->operations->power_off(backend->context);
+		else
+			ret = 0;
+		if (backend->set_power) {
+			const int power_ret = backend->set_power(backend->context, false);
+			if (!ret)
+				ret = power_ret;
+		}
+		return ret;
 	}
 
 	if (backend->set_power) {
@@ -101,8 +111,14 @@ static int px4_card_set_power(struct px4_card *card, bool on)
 			return ret;
 	}
 
-	ret = it930x_bcas_init(backend->it930x);
+	if (backend->operations)
+		ret = backend->operations->power_on ?
+			backend->operations->power_on(backend->context) : 0;
+	else
+		ret = it930x_bcas_init(backend->it930x);
 	if (ret) {
+		if (backend->operations && backend->operations->power_off)
+			backend->operations->power_off(backend->context);
 		if (backend->set_power)
 			backend->set_power(backend->context, false);
 		return ret;
@@ -112,7 +128,7 @@ static int px4_card_set_power(struct px4_card *card, bool on)
 	return 0;
 }
 
-/* 機種のロックを保持した状態で呼ぶ */
+/* IT930x バックエンドでは機種のロックを保持した状態で呼ぶ */
 static int px4_card_request(struct px4_card *card, unsigned int command,
 			    u32 *value, struct px4_card_frame *frame)
 {
@@ -125,8 +141,45 @@ static int px4_card_request(struct px4_card *card, unsigned int command,
 
 	/* 電源を入れていない UART を操作すると、前回の電源投入時の状態を読み書きしてしまう */
 	if (command != PX4_CARD_POWER_ON && command != PX4_CARD_POWER_OFF &&
+	    command != PX4_CARD_SET_TIMEOUT &&
 	    command != PX4_CARD_DETECT && !card->powered)
 		return -EHOSTDOWN;
+
+	if (card->backend.operations) {
+		const struct px4_card_operations *operations = card->backend.operations;
+
+		switch (command) {
+		case PX4_CARD_POWER_ON:
+			return px4_card_set_power(card, true);
+		case PX4_CARD_POWER_OFF:
+			return px4_card_set_power(card, false);
+		case PX4_CARD_SET_TIMEOUT:
+			if (!*value || *value > 4000)
+				return -EINVAL;
+			ret = operations->set_timeout ?
+				operations->set_timeout(card->backend.context, *value) : 0;
+			return ret;
+		case PX4_CARD_DETECT:
+			ret = operations->detect ? operations->detect(card->backend.context, &state) : -ENOSYS;
+			*value = state;
+			return ret;
+		case PX4_CARD_RESET:
+			return operations->reset ? operations->reset(card->backend.context) : -ENOSYS;
+		case PX4_CARD_SET_BAUDRATE:
+			return operations->set_baudrate ?
+				operations->set_baudrate(card->backend.context, *value) : -ENOSYS;
+		case PX4_CARD_RX_READY:
+			ret = operations->rx_ready ? operations->rx_ready(card->backend.context, &state) : -ENOSYS;
+			*value = state;
+			return ret;
+		case PX4_CARD_READ:
+			return operations->read ? operations->read(card->backend.context, frame) : -ENOSYS;
+		case PX4_CARD_WRITE:
+			return operations->write ? operations->write(card->backend.context, frame) : -ENOSYS;
+		default:
+			return -ENOTTY;
+		}
+	}
 
 	switch (command) {
 	case PX4_CARD_POWER_ON:
@@ -134,6 +187,10 @@ static int px4_card_request(struct px4_card *card, unsigned int command,
 
 	case PX4_CARD_POWER_OFF:
 		return px4_card_set_power(card, false);
+	case PX4_CARD_SET_TIMEOUT:
+		if (!*value || *value > 4000)
+			return -EINVAL;
+		return 0;
 
 	case PX4_CARD_DETECT:
 		/*
@@ -173,6 +230,10 @@ static void px4_card_power_off(struct px4_card *card)
 {
 	if (!card->powered)
 		return;
+	if (card->backend.operations) {
+		px4_card_set_power(card, false);
+		return;
+	}
 
 	mutex_lock(card->backend.lock);
 	px4_card_set_power(card, false);
@@ -253,6 +314,7 @@ static long px4_card_ioctl(struct file *file, unsigned int command,
 		break;
 
 	case PX4_CARD_SET_BAUDRATE:
+	case PX4_CARD_SET_TIMEOUT:
 		if (get_user(value, (u32 __user *)ptr))
 			return -EFAULT;
 		break;
@@ -277,6 +339,8 @@ static long px4_card_ioctl(struct file *file, unsigned int command,
 
 	if (card->disconnected) {
 		ret = -ENODEV;
+	} else if (card->backend.operations) {
+		ret = px4_card_request(card, command, &value, &frame);
 	} else if (mutex_lock_interruptible(card->backend.lock)) {
 		ret = -ERESTARTSYS;
 	} else {
@@ -464,6 +528,10 @@ int px4_card_register(struct device *parent,
 	int ret;
 
 	*result = NULL;
+	if (!backend || !backend->available ||
+	    (!backend->operations && !backend->it930x) ||
+	    (!backend->operations && !backend->lock))
+		return -EINVAL;
 
 	/* px4_card_init() に失敗した場合は、カードリーダーを登録せずにチューナーだけを使えるようにする */
 	if (!px4_card_class)

@@ -28,21 +28,56 @@
 
 static void torne_device_release(struct kref *kref);
 
-static int torne_control(void *priv, u8 request_type, u16 value, u16 index,
-			 void *buffer, u16 length)
+static int torne_control_timeout(void *priv, u8 request_type, u16 value,
+				u16 index, void *buffer, u16 length,
+				unsigned int timeout_ms)
 {
 	struct torne_device *device = priv;
+	unsigned long deadline;
+	unsigned long remaining;
 	unsigned int pipe;
+	int ret;
 
 	if (!device || !device->usb_dev || !atomic_read(&device->available))
 		return -ENODEV;
 	if (length > 64 || (length && !buffer))
 		return -EINVAL;
+	if (!timeout_ms)
+		return -ETIMEDOUT;
+	if (timeout_ms > TORNE_CTRL_TIMEOUT_MS)
+		timeout_ms = TORNE_CTRL_TIMEOUT_MS;
+	deadline = jiffies + max_t(unsigned long, 1, msecs_to_jiffies(timeout_ms));
+	for (;;) {
+		if (mutex_trylock(&device->control_lock))
+			break;
+		if (time_after_eq(jiffies, deadline))
+			return -ETIMEDOUT;
+		if (msleep_interruptible(1))
+			return -ERESTARTSYS;
+	}
+	if (!atomic_read(&device->available)) {
+		mutex_unlock(&device->control_lock);
+		return -ENODEV;
+	}
+	if (time_after_eq(jiffies, deadline)) {
+		mutex_unlock(&device->control_lock);
+		return -ETIMEDOUT;
+	}
+	remaining = deadline - jiffies;
+	timeout_ms = max_t(unsigned int, 1, jiffies_to_msecs(remaining));
 	pipe = (request_type & USB_DIR_IN) ? usb_rcvctrlpipe(device->usb_dev, 0) :
 		usb_sndctrlpipe(device->usb_dev, 0);
-	return usb_control_msg(device->usb_dev, pipe, 0xbc, request_type,
-			       value, index, buffer, length,
-			       TORNE_CTRL_TIMEOUT_MS);
+	ret = usb_control_msg(device->usb_dev, pipe, 0xbc, request_type,
+			      value, index, buffer, length, timeout_ms);
+	mutex_unlock(&device->control_lock);
+	return ret;
+}
+
+static int torne_control(void *priv, u8 request_type, u16 value, u16 index,
+			 void *buffer, u16 length)
+{
+	return torne_control_timeout(priv, request_type, value, index, buffer, length,
+				     TORNE_CTRL_TIMEOUT_MS);
 }
 
 static int torne_bulk(void *priv, u8 endpoint, void *buffer, int length,
@@ -90,6 +125,161 @@ static const struct torne_ops torne_operations = {
 	.msleep = torne_sleep,
 	.now_ms = torne_now_ms,
 	.log = torne_log,
+};
+
+static int torne_card_read32(void *context, u32 address, u32 *value,
+			     unsigned int timeout_ms)
+{
+	struct torne_device *device = context;
+	u8 data[4];
+	u16 request_value = (u16)(((address >> 8) & 0xff00) | (address >> 24));
+	int ret;
+
+	if (!device || !value || !atomic_read(&device->available) || !device->bridge_up)
+		return -ENODEV;
+	ret = torne_control_timeout(device, 0xc0, request_value, (u16)address,
+				     data, sizeof(data), timeout_ms);
+	if (ret < 0)
+		return ret;
+	if (ret != (int)sizeof(data))
+		return -EIO;
+	*value = (u32)data[0] << 24 | (u32)data[1] << 16 | (u32)data[2] << 8 | data[3];
+	return 0;
+}
+
+static int torne_card_write32(void *context, u32 address, u32 value,
+			      unsigned int timeout_ms)
+{
+	struct torne_device *device = context;
+	u8 data[4] = { value >> 24, value >> 16, value >> 8, value };
+	u16 request_value = (u16)(((address >> 8) & 0xff00) | (address >> 24));
+	int ret;
+
+	if (!device || !atomic_read(&device->available) || !device->bridge_up)
+		return -ENODEV;
+	ret = torne_control_timeout(device, 0x40, request_value, (u16)address,
+				     data, sizeof(data), timeout_ms);
+	if (ret < 0)
+		return ret;
+	return ret == (int)sizeof(data) ? 0 : -EIO;
+}
+
+static int torne_card_lock(void *context)
+{
+	struct torne_device *device = context;
+
+	if (mutex_lock_interruptible(&device->card_uart_lock))
+		return -ERESTARTSYS;
+	if (!atomic_read(&device->available) || !device->bridge_up) {
+		mutex_unlock(&device->card_uart_lock);
+		return -ENODEV;
+	}
+	return 0;
+}
+
+static void torne_card_unlock(void *context)
+{
+	struct torne_device *device = context;
+
+	mutex_unlock(&device->card_uart_lock);
+}
+
+static void torne_card_sleep(void *context, unsigned int milliseconds)
+{
+	(void)context;
+	msleep(milliseconds);
+}
+
+static u64 torne_card_now_ms(void *context)
+{
+	(void)context;
+	return div_u64(ktime_get_ns(), NSEC_PER_MSEC);
+}
+
+static const struct torne_card_io_ops torne_card_io_operations = {
+	.read32 = torne_card_read32,
+	.write32 = torne_card_write32,
+	.lock = torne_card_lock,
+	.unlock = torne_card_unlock,
+	.sleep_ms = torne_card_sleep,
+	.now_ms = torne_card_now_ms,
+};
+
+static int torne_card_power_on(void *context)
+{
+	struct torne_device *device = context;
+
+	return atomic_read(&device->available) && device->bridge_up ? 0 : -ENODEV;
+}
+
+static int torne_card_power_off(void *context)
+{
+	struct torne_device *device = context;
+
+	/* USB 切断後はカード電源参照の後始末だけを行い、解放済みデバイスへ転送しない。 */
+	return !atomic_read(&device->available) ? 0 :
+		torne_card_power_down(&device->card_port);
+}
+
+static int torne_backend_card_set_timeout(void *context, u32 timeout_ms)
+{
+	struct torne_device *device = context;
+
+	return torne_card_port_set_timeout(&device->card_port, timeout_ms);
+}
+
+static int torne_backend_card_detect(void *context, bool *present)
+{
+	struct torne_device *device = context;
+
+	return torne_card_detect(&device->card_port, present);
+}
+
+static int torne_backend_card_reset(void *context)
+{
+	struct torne_device *device = context;
+
+	return torne_card_reset(&device->card_port);
+}
+
+static int torne_backend_card_set_baudrate(void *context, u32 baudrate)
+{
+	struct torne_device *device = context;
+
+	return torne_card_set_baudrate(&device->card_port, baudrate);
+}
+
+static int torne_backend_card_rx_ready(void *context, bool *ready)
+{
+	struct torne_device *device = context;
+
+	return torne_card_rx_ready(&device->card_port, ready);
+}
+
+static int torne_backend_card_read(void *context, struct px4_card_frame *frame)
+{
+	struct torne_device *device = context;
+
+	return torne_card_read(&device->card_port, frame->data, &frame->length);
+}
+
+static int torne_backend_card_write(void *context, const struct px4_card_frame *frame)
+{
+	struct torne_device *device = context;
+
+	return torne_card_write(&device->card_port, frame->data, frame->length);
+}
+
+static const struct px4_card_operations torne_card_operations = {
+	.power_on = torne_card_power_on,
+	.power_off = torne_card_power_off,
+	.set_timeout = torne_backend_card_set_timeout,
+	.detect = torne_backend_card_detect,
+	.reset = torne_backend_card_reset,
+	.set_baudrate = torne_backend_card_set_baudrate,
+	.rx_ready = torne_backend_card_rx_ready,
+	.read = torne_backend_card_read,
+	.write = torne_backend_card_write,
 };
 
 static void torne_stream_reset(struct torne_device *device)
@@ -425,6 +615,8 @@ static void torne_device_release(struct kref *kref)
 		itedtv_bus_term(&device->stream_bus);
 	kvfree(device->framer);
 	kvfree(device->ts_output);
+	mutex_destroy(&device->card_uart_lock);
+	mutex_destroy(&device->control_lock);
 	mutex_destroy(&device->operation_lock);
 	put_device(device->dev);
 	complete(device->quit_completion);
@@ -455,6 +647,8 @@ int torne_device_init(struct torne_device *device, struct device *dev,
 	device->usb_dev = usb_dev;
 	device->quit_completion = quit_completion;
 	mutex_init(&device->operation_lock);
+	mutex_init(&device->control_lock);
+	mutex_init(&device->card_uart_lock);
 	spin_lock_init(&device->stream_lock);
 	INIT_DELAYED_WORK(&device->idle_work, torne_idle_work);
 	device->stream_bus.dev = dev;
@@ -469,7 +663,10 @@ int torne_device_init(struct torne_device *device, struct device *dev,
 	if (ret)
 		goto fail_device;
 	device->bus_initialized = true;
+	/* bridge の起動中も制御転送を受け付ける。probe 失敗時は fail_bus で戻す。 */
+	atomic_set(&device->available, 1);
 	torne_bridge_init(&device->bridge, &torne_operations, device);
+	torne_card_port_init(&device->card_port, &torne_card_io_operations, device);
 	ret = torne_bridge_start(&device->bridge);
 	if (ret) {
 		dev_err(dev, "torne MB86H47A bridge start failed: %d\n", ret);
@@ -512,23 +709,40 @@ int torne_device_init(struct torne_device *device, struct device *dev,
 	}
 	device->chrdev_group = chrdev_group;
 	device->chrdev = &chrdev_group->chrdev[0];
+	{
+		struct px4_card_backend card_backend = {
+			.it930x = NULL,
+			.operations = &torne_card_operations,
+			.lock = &device->operation_lock,
+			.available = &device->available,
+			.context = device,
+		};
+		ret = px4_card_register(dev, &card_backend, &device->card);
+		if (ret)
+			dev_warn(dev, "Card reader registration failed: %d\n", ret);
+	}
 	dev_info(dev, "torne receiver registered (bulk IN 0x81)\n");
 	return 0;
 
 fail_bus:
-	if (device->ready) {
+	if (device->bridge_up) {
 		atomic_set(&device->available, 1);
 		torne_bridge_stop_stream(&device->bridge);
-		torne_dib_set_output(&device->dib, TORNE_OUT_HIGHZ);
-		torne_dib_sleep(&device->dib);
+		if (device->ready) {
+			torne_dib_set_output(&device->dib, TORNE_OUT_HIGHZ);
+			torne_dib_sleep(&device->dib);
+		}
+		device->bridge_up = false;
 		device->ready = false;
-		atomic_set(&device->available, 0);
 	}
+	atomic_set(&device->available, 0);
 	if (device->bus_initialized) {
 		itedtv_bus_term(&device->stream_bus);
 		device->bus_initialized = false;
 	}
 fail_device:
+	mutex_destroy(&device->card_uart_lock);
+	mutex_destroy(&device->control_lock);
 	mutex_destroy(&device->operation_lock);
 	put_device(dev);
 	return ret;
@@ -536,6 +750,9 @@ fail_device:
 
 void torne_device_term(struct torne_device *device)
 {
+	/* 受付を閉じてからカード UART の VCC を停止し、最後にチューナーの利用可能状態を閉じる。 */
+	px4_card_unregister(device->card);
+	device->card = NULL;
 	atomic_xchg(&device->available, 0);
 	mutex_lock(&device->operation_lock);
 	WRITE_ONCE(device->capture_enabled, false);
