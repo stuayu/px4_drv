@@ -338,7 +338,7 @@ Copy-Item pkg/BonDriver_PX4/BonDriver_T230C.ini dist/BonDriver_T230C_64bit/BonDr
 Copy-Item pkg/BonDriver_PX4/BonDriver_T230C-C.ChSet.txt dist/BonDriver_T230C_64bit/BonDriver_T230C-C.ChSet.txt
 Copy-Item build/x64/Release-static/DriverHost_PX4.exe dist/BonDriver_T230C_64bit/DriverHost_PX4.exe
 Copy-Item pkg/DriverHost_PX4/DriverHost_PX4.ini dist/BonDriver_T230C_64bit/DriverHost_PX4.ini
- BonDriver と同じビット数の WinSCard.dll を配置
+# BonDriver と同じビット数の WinSCard.dll を配置
 Copy-Item pkg/BonDriver_PX4/BonDriver_Torne.ini dist/BonDriver_Torne_32bit/BonDriver_Torne.ini
 Copy-Item pkg/BonDriver_PX4/BonDriver_Torne-T.ChSet.txt dist/BonDriver_Torne_32bit/BonDriver_Torne-T.ChSet.txt
 Copy-Item build/x86/Release-static/BonDriver_PX4.dll dist/BonDriver_Torne_32bit/BonDriver_Torne.dll
