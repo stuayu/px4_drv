@@ -6,11 +6,45 @@
 #include <fstream>
 #include <cstdlib>
 #include <cstring>
+#include <cstdint>
 
 #include "isdbc_channel.h"
 #include "util.hpp"
 
 namespace px4 {
+
+namespace {
+
+/* 旧形式ではVHF 4〜7chの中心周波数が現行表より2MHz低い。隣接chは6MHz離れているため、この幅なら逆引き先は一意。 */
+constexpr long long kLegacyFrequencyToleranceKHz = 2000;
+
+bool FindPhysicalChannel(std::int64_t frequency_khz, long &channel) noexcept
+{
+	unsigned int matches = 0;
+	long found = -1;
+
+	for (int candidate = 0; candidate <= 112; candidate++) {
+		const int candidate_frequency = isdbc_channel_to_khz(candidate);
+		if (candidate_frequency < 0)
+			continue;
+
+		long long difference = static_cast<long long>(candidate_frequency) - frequency_khz;
+		if (difference < 0)
+			difference = -difference;
+		if (difference <= kLegacyFrequencyToleranceKHz) {
+			matches++;
+			found = candidate;
+		}
+	}
+
+	if (matches != 1)
+		return false;
+
+	channel = found;
+	return true;
+}
+
+} // namespace
 
 bool ChannelSet::Load(const std::wstring &path, px4::SystemType system) noexcept
 {
@@ -287,7 +321,7 @@ bool ChannelSet::ParseCable(char **head, char **tail, px4::SystemType system, Ch
 		return false;
 	const long physical_channel = value;
 
-	// 5列の現行形式は物理chとTSMF番号、6/7列の旧形式は物理ch・TSID・中心周波数・補正。
+	// 5列の現行形式は物理chとTSMF番号、6〜11列の旧形式はTSID・周波数・TSMF設定を含む。
 	if (!*tail)
 		return false;
 	Split(head, tail, '\t');
@@ -305,28 +339,90 @@ bool ChannelSet::ParseCable(char **head, char **tail, px4::SystemType system, Ch
 	ch.tsid = static_cast<std::uint16_t>(tsid);
 
 	Split(head, tail, '\t');
-	if (!parse(*head, 0, 1000000, value))
+	long frequency;
+	if (!parse(*head, 0, 1000000, frequency))
 		return false;
+	long correction = 0;
 	if (*tail) {
 		Split(head, tail, '\t');
-		if (!parse(*head, -3000, 3000, value) || *tail)
+		if (!parse(*head, -3000, 3000, correction))
 			return false;
 	}
 
-	long current_channel;
-	if (physical_channel >= 113 && physical_channel <= 115) {
-		current_channel = physical_channel - 113;
-	} else if (physical_channel >= 116 && physical_channel <= 124) {
-		current_channel = physical_channel - 103;
-	} else {
-		current_channel = physical_channel;
+	long relative_stream = 0;
+	long slot_offset = 0;
+	long modulation = 0;
+	long tlv_output = 0;
+	bool has_relative_stream = false;
+	if (*tail) {
+		Split(head, tail, '\t');
+		if (!parse(*head, 0, 256, value))
+			return false;
+		if (value <= 14) {
+			relative_stream = value;
+			has_relative_stream = true;
+		} else if (value == 64 || value == 256) {
+			/* 旧形式では第8列も通常chの明示QAM指定として使われた。 */
+			modulation = value;
+		} else {
+			return false;
+		}
+
+		if (*tail) {
+			if (!has_relative_stream)
+				return false;
+			Split(head, tail, '\t');
+			if (!parse(*head, -51, 51, slot_offset))
+				return false;
+			if (*tail) {
+				Split(head, tail, '\t');
+				if (!parse(*head, 0, 256, modulation) ||
+					(modulation != 0 && modulation != 64 && modulation != 256))
+					return false;
+				if (*tail) {
+					Split(head, tail, '\t');
+					if (!parse(*head, 0, 1, tlv_output) || *tail)
+						return false;
+				}
+			}
+		}
 	}
-	if (isdbc_channel_to_khz(static_cast<int>(current_channel)) < 0)
+
+	/* 現行Hostは相対TS番号と自動QAMを使う。旧実装だけのslot offsetや明示QAMは誤選局を避けて拒否する。 */
+	if (slot_offset != 0 || modulation != 0)
+		return false;
+	/* TSMFのTLV出力はstream_typeから自動判定するため、旧フラグは構文だけ検証して行は残す。 */
+	(void)tlv_output;
+	ch.tsmf_stream = static_cast<std::uint8_t>(relative_stream);
+
+	long current_channel;
+	std::int64_t target_frequency;
+	if (frequency) {
+		/* 旧実装は中心周波数へ補正値を加えて選局していたため、その実効値から現行番号を逆引きする。 */
+		target_frequency = static_cast<std::int64_t>(frequency) + correction;
+		if (!FindPhysicalChannel(target_frequency, current_channel))
+			return false;
+	} else {
+		if (physical_channel >= 113 && physical_channel <= 115) {
+			current_channel = physical_channel - 113;
+		} else if (physical_channel >= 116 && physical_channel <= 124) {
+			current_channel = physical_channel - 103;
+		} else {
+			current_channel = physical_channel;
+		}
+		const int nominal_frequency = isdbc_channel_to_khz(static_cast<int>(current_channel));
+		if (nominal_frequency < 0)
+			return false;
+		target_frequency = static_cast<std::int64_t>(nominal_frequency) + correction;
+		long normalized_channel;
+		if (!FindPhysicalChannel(target_frequency, normalized_channel))
+			return false;
+		current_channel = normalized_channel;
+	}
+	if (current_channel < 0 || current_channel > 112)
 		return false;
 
-	/* 旧形式の周波数値と補正は現行の共有物理ch表に置き換えるため、構文と範囲だけ検証する。 */
 	ch.ptx_ch = static_cast<std::uint32_t>(current_channel);
-	ch.tsmf_stream = 0;
 
 	return true;
 }

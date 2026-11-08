@@ -1,4 +1,5 @@
 #include <fstream>
+#include <cstring>
 #include <string>
 #include <unistd.h>
 
@@ -160,11 +161,13 @@ static bool run_distributed_torne()
 static bool run_legacy_isdbc()
 {
 	const std::string legacy =
-		"$CATV\t0\n$UHF\t1\n$VHF\t2\n"
-		"C13\t0\t0\t3\t0\t0\t-200\n"
-		"C22\t0\t1\t12\t0\t167000\t-275\n"
-		"U13\t1\t0\t63\t0\t473000\t-600\n"
-		"U21\t1\t1\t71\t0\t520750\t-650\n"
+		"$CATV\t0\n$CATV-TLV\t1\n$VHF\t2\n"
+		"C28\t0\t0\t18\t65535\t0\t0\n"
+		"U18\t0\t1\t18\t0\t503000\t0\n"
+		"U25\t0\t2\t25\t0\t545000\t0\n"
+		"U18-correction\t0\t3\t18\t0\t503250\t-250\n"
+		"U18-TSMF\t0\t4\t18\t0\t503000\t0\t14\t0\t0\t0\n"
+		"C13-TLV\t1\t0\t3\t0\t0\t0\t4\t0\t0\t1\n"
 		"VHF1\t2\t0\t113\t0\t93000\n"
 		"VHF4\t2\t1\t116\t0\t171000\n"
 		"VHF12\t2\t2\t124\t0\t219000\n";
@@ -173,10 +176,15 @@ static bool run_legacy_isdbc()
 	px4::ChannelSet channels(true);
 	bool ok = !path.empty() && channels.Load(path, px4::SystemType::ISDB_C);
 	if (ok) {
-		ok = channels.GetChannel(0, 0).ptx_ch == 3 &&
-			channels.GetChannel(0, 1).ptx_ch == 12 &&
-			channels.GetChannel(1, 0).ptx_ch == 63 &&
-			channels.GetChannel(1, 1).ptx_ch == 71 &&
+		ok = channels.GetChannel(0, 0).ptx_ch == 18 &&
+			channels.GetChannel(0, 0).tsid == 65535 &&
+			channels.GetChannel(0, 1).ptx_ch == 68 &&
+			channels.GetChannel(0, 2).ptx_ch == 75 &&
+			channels.GetChannel(0, 3).ptx_ch == 68 &&
+			channels.GetChannel(0, 4).ptx_ch == 68 &&
+			channels.GetChannel(0, 4).tsmf_stream == 14 &&
+			channels.GetChannel(1, 0).ptx_ch == 3 &&
+			channels.GetChannel(1, 0).tsmf_stream == 4 &&
 			channels.GetChannel(2, 0).ptx_ch == 0 &&
 			channels.GetChannel(2, 1).ptx_ch == 13 &&
 			channels.GetChannel(2, 2).ptx_ch == 21 &&
@@ -195,11 +203,93 @@ static bool run_legacy_isdbc()
 	unlink(name.c_str());
 	if (!ok)
 		fprintf(stderr, "out-of-range legacy ISDB-C frequency was accepted\n");
+	if (!ok)
+		return false;
+
+	const std::wstring unmatched_path = write_temp(
+		"$Space\t0\nUnmatched\t0\t0\t63\t0\t476000\t0\n", name);
+	px4::ChannelSet unmatched(true);
+	ok = !unmatched_path.empty() && !unmatched.Load(unmatched_path, px4::SystemType::ISDB_C);
+	unlink(name.c_str());
+	if (!ok) {
+		fprintf(stderr, "legacy frequency without a table match was accepted\n");
+		return false;
+	}
+
+	const std::wstring modulation_path = write_temp(
+		"$Space\t0\nModulation\t0\t0\t18\t0\t503000\t0\t0\t0\t64\t0\n", name);
+	px4::ChannelSet unsupported_modulation(true);
+	ok = !modulation_path.empty() &&
+		!unsupported_modulation.Load(modulation_path, px4::SystemType::ISDB_C);
+	unlink(name.c_str());
+	if (!ok)
+		fprintf(stderr, "unsupported legacy modulation override was accepted\n");
+	if (!ok)
+		return false;
+
+	const std::wstring slot_path = write_temp(
+		"$Space\t0\nSlotOffset\t0\t0\t18\t0\t503000\t0\t0\t1\n", name);
+	px4::ChannelSet unsupported_slot_offset(true);
+	ok = !slot_path.empty() && !unsupported_slot_offset.Load(slot_path, px4::SystemType::ISDB_C);
+	unlink(name.c_str());
+	if (!ok)
+		fprintf(stderr, "unsupported legacy slot offset was accepted\n");
 	return ok;
 }
 
-int main()
+static bool compare_legacy_production_tables(const char *old_path, const char *converted_path)
 {
+	px4::ChannelSet old_channels(true), converted_channels(true);
+	const std::wstring old_name(old_path, old_path + std::strlen(old_path));
+	const std::wstring converted_name(converted_path, converted_path + std::strlen(converted_path));
+	if (!old_channels.Load(old_name, px4::SystemType::ISDB_C) ||
+		!converted_channels.Load(converted_name, px4::SystemType::ISDB_C)) {
+		fprintf(stderr, "production ChSet comparison: one file failed to load\n");
+		return false;
+	}
+
+	unsigned int compared = 0;
+	unsigned int compared_by_space[3] = {};
+	for (std::uint32_t space : { 0u, 1u, 2u }) {
+		if (!old_channels.ExistsSpace(space) || !converted_channels.ExistsSpace(space) ||
+			old_channels.GetSpaceName(space) != converted_channels.GetSpaceName(space)) {
+			fprintf(stderr, "production ChSet comparison: space %u differs\n", space);
+			return false;
+		}
+		for (std::uint32_t channel = 0;
+			old_channels.ExistsChannel(space, channel) || converted_channels.ExistsChannel(space, channel);
+			channel++) {
+			if (!old_channels.ExistsChannel(space, channel) ||
+				!converted_channels.ExistsChannel(space, channel)) {
+				fprintf(stderr, "production ChSet comparison: missing row space=%u id=%u\n", space, channel);
+				return false;
+			}
+			const auto &old_row = old_channels.GetChannel(space, channel);
+			const auto &converted_row = converted_channels.GetChannel(space, channel);
+			if (old_row.name != converted_row.name || old_row.ptx_ch != converted_row.ptx_ch ||
+				old_row.tsmf_stream != converted_row.tsmf_stream) {
+				fprintf(stderr, "production ChSet comparison: row differs space=%u id=%u\n", space, channel);
+				return false;
+			}
+			compared++;
+			compared_by_space[space]++;
+		}
+	}
+	if (compared != 214) {
+		fprintf(stderr, "production ChSet comparison: expected 214 rows, compared %u\n", compared);
+		return false;
+	}
+	fprintf(stderr, "production ChSet comparison: %u rows match (space0=%u, space1=%u, space2=%u)\n",
+		compared, compared_by_space[0], compared_by_space[1], compared_by_space[2]);
+	return true;
+}
+
+int main(int argc, char **argv)
+{
+	if (argc == 3)
+		return compare_legacy_production_tables(argv[1], argv[2]) ? 0 : 1;
+	if (argc != 1)
+		return 2;
 	return run_distributed_t230c() && run_distributed_torne() &&
 		run("$Space\t0\r\nName\t0\t0\t3\t0\r\n", true, true) &&
 		run("$Space\t0\nName\t0\t0\t3\t0", true, true) &&

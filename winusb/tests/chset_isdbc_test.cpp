@@ -52,7 +52,7 @@ int wmain(int argc, wchar_t **argv)
 		"f93250\t0\t3\t93250\t0\r\n"
 		"ts15\t0\t4\t51\t15\r\n"
 		"ts99\t0\t5\t51\t99\r\n"
-		"extra\t0\t6\t51\t0\t0\t0\t0\r\n"
+		"extra\t0\t6\t51\t0\t0\t0\t0\t0\t0\t0\t0\r\n"
 		"short\t0\t7\t51\r\n"
 		"suffix\t0\t8\t51x\t0\r\n"
 		"h001\t0\t9\tH001\t0\r\n";
@@ -76,23 +76,31 @@ int wmain(int argc, wchar_t **argv)
 	CHECK(!isdbc_strict.Load(path, px4::SystemType::ISDB_C));
 	std::puts("ISDB-C ChSet columns and boundaries: PASS");
 
-	// 旧形式は物理ch・TSID・中心周波数・補正を持つ。旧 VHF 番号も現行番号へ正規化する。
+	// 旧形式の周波数逆引きは UHF と CATV の裸の PTX 番号が衝突しても区別し、11列も保持する。
 	const char *legacy_isdbc_body =
-		"$CATV\t0\r\n$UHF\t1\r\n$VHF\t2\r\n"
-		"C13\t0\t0\t3\t65535\t0\t-200\r\n"
-		"U13\t1\t0\t63\t0\t473000\t-600\r\n"
-		"U21\t1\t1\t71\t0\t520750\t-650\r\n"
+		"$CATV\t0\r\n$CATV-TLV\t1\r\n$VHF\t2\r\n"
+		"C28\t0\t0\t18\t65535\t0\t0\r\n"
+		"U18\t0\t1\t18\t0\t503000\t0\r\n"
+		"U25\t0\t2\t25\t0\t545000\t0\r\n"
+		"U18-correction\t0\t3\t18\t0\t503250\t-250\r\n"
+		"U18-TSMF\t0\t4\t18\t0\t503000\t0\t14\t0\t0\t0\r\n"
+		"C13-TLV\t1\t0\t3\t0\t0\t0\t4\t0\t0\t1\r\n"
 		"VHF1\t2\t0\t113\t0\t93000\r\n"
 		"VHF4\t2\t1\t116\t0\t171000\r\n"
 		"VHF12\t2\t2\t124\t0\t219000\r\n";
 	path = WriteTemp(legacy_isdbc_body);
 	px4::ChannelSet legacy_isdbc(true);
 	CHECK(legacy_isdbc.Load(path, px4::SystemType::ISDB_C));
-	CHECK(legacy_isdbc.GetChannel(0, 0).ptx_ch == 3);
+	CHECK(legacy_isdbc.GetChannel(0, 0).ptx_ch == 18);
 	CHECK(legacy_isdbc.GetChannel(0, 0).tsid == 65535);
+	CHECK(legacy_isdbc.GetChannel(0, 1).ptx_ch == 68);
+	CHECK(legacy_isdbc.GetChannel(0, 2).ptx_ch == 75);
+	CHECK(legacy_isdbc.GetChannel(0, 3).ptx_ch == 68);
+	CHECK(legacy_isdbc.GetChannel(0, 4).ptx_ch == 68);
+	CHECK(legacy_isdbc.GetChannel(0, 4).tsmf_stream == 14);
 	CHECK(legacy_isdbc.GetChannel(0, 0).tsmf_stream == 0);
-	CHECK(legacy_isdbc.GetChannel(1, 0).ptx_ch == 63);
-	CHECK(legacy_isdbc.GetChannel(1, 1).ptx_ch == 71);
+	CHECK(legacy_isdbc.GetChannel(1, 0).ptx_ch == 3);
+	CHECK(legacy_isdbc.GetChannel(1, 0).tsmf_stream == 4);
 	CHECK(legacy_isdbc.GetChannel(2, 0).ptx_ch == 0);
 	CHECK(legacy_isdbc.GetChannel(2, 1).ptx_ch == 13);
 	CHECK(legacy_isdbc.GetChannel(2, 2).ptx_ch == 21);
@@ -101,6 +109,15 @@ int wmain(int argc, wchar_t **argv)
 		"$UHF\t0\r\ninvalid-frequency\t0\t0\t63\t0\t1000001\t-600\r\n");
 	px4::ChannelSet invalid_legacy_isdbc(true);
 	CHECK(!invalid_legacy_isdbc.Load(path, px4::SystemType::ISDB_C));
+	path = WriteTemp("$Space\t0\r\nno-table-match\t0\t0\t63\t0\t476000\t0\r\n");
+	px4::ChannelSet unmatched_legacy_isdbc(true);
+	CHECK(!unmatched_legacy_isdbc.Load(path, px4::SystemType::ISDB_C));
+	path = WriteTemp("$Space\t0\r\nmanual-qam\t0\t0\t18\t0\t503000\t0\t0\t0\t64\t0\r\n");
+	px4::ChannelSet explicit_modulation(true);
+	CHECK(!explicit_modulation.Load(path, px4::SystemType::ISDB_C));
+	path = WriteTemp("$Space\t0\r\nslot-offset\t0\t0\t18\t0\t503000\t0\t0\t1\r\n");
+	px4::ChannelSet unsupported_slot_offset(true);
+	CHECK(!unsupported_slot_offset.Load(path, px4::SystemType::ISDB_C));
 	std::puts("Legacy ISDB-C ChSet normalization and errors: PASS");
 
 	// J.83B の行は中心周波数 (kHz) の1列だけで、TSMF を使わないため後ろに列を持たない
