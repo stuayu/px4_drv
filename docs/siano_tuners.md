@@ -20,6 +20,12 @@ The Windows/macOS host expects `isdbt_rio.inp` next to DriverHost_PX4, unless `S
 
 On Windows and macOS, `BonDriver_PX4::GetSignalLevel()` reports Siano's demodulator SNR as C/N in dB. `GET_STATISTICS_EX_RES` begins with a 32-bit `request_result`, followed by `sms_isdbt_stats_ex`; `is_demod_locked` is at offset 12 and signed `SNR` (integer dB) at offset 20 within that structure. The host converts SNR to millidecibels by multiplying by 1000, then the existing BonDriver interface converts it back to dB. This is not calibrated RF input power in dBm. The Linux upstream Siano DVB frontend uses the same SNR field and publishes it in millidecibels.
 
+## ISDB-C and J.83B
+
+Siano RIO support in this repository is limited to terrestrial ISDB-T. The public Linux `smsdvb` frontend registers only `SYS_DVBT` and `SYS_ISDBT`, and the firmware named in this repository (`isdbt_rio.inp`) is the ISDB-T image. No public Siano firmware, mode, or register document describes DVB-C, ISDB-C, or ITU-T J.83 Annex B reception. PX-S1UD V2.0 and PX-Q1UD therefore have no ISDB-C or J.83B path in any OS build.
+
+A user report says PX-S1UD receives SKY PerfecTV! Premium Hikari (J.83B). The report includes no firmware name, mode, channel, or TS log, and this repository has not reproduced it. Until a capture shows lock and valid TS on a J.83B signal, the report is not treated as evidence of support.
+
 ## Verification status
 
 The portable protocol codec has automated tests. The macOS DriverHost builds with the Siano backend and CTest passes. The Windows v145 x86/x64 `build.ps1` and hardware-independent tests pass. On Windows hardware, 60-second captures on 13ch, 15ch, and 22ch had zero CC, TEI, and sync errors and average bitrates within 0.2% of the official BDA driver. In a four-function concurrent run, all four channels (13ch, 15ch, 22ch, 28ch) produced TS. A separate function-level check found that USB function `&0&1` fails to produce `BDA_DATA` on 28ch under WinUSB although the official BDA driver receives 28ch on that function; the other three WinUSB functions received 28ch. The WinUSB host now reports a tune failure when no TS data arrives, and this function-specific reception gap remains unresolved. Linux Siano reception, 30-minute captures, hotplug, and driver ownership switching still require hardware verification. Until the remaining checks pass, PX-S1UD V2.0 and PX-Q1UD remain experimental.
