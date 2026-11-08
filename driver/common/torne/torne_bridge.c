@@ -87,10 +87,10 @@ static inline u32 be32(const u8 *p)
 
 static inline void put_be32(u8 *p, u32 v)
 {
-	p[0] = v >> 24;
-	p[1] = v >> 16;
-	p[2] = v >> 8;
-	p[3] = v;
+	p[0] = (u8)(v >> 24);
+	p[1] = (u8)(v >> 16);
+	p[2] = (u8)(v >> 8);
+	p[3] = (u8)v;
 }
 
 void torne_bridge_init(struct torne_bridge *b, const struct torne_ops *ops, void *priv)
@@ -156,7 +156,8 @@ static void read_block(struct torne_bridge *b, u32 address, u8 *buf, unsigned in
 	int n;
 
 	memory_setup(address, &value, &index);
-	n = b->ops->control(b->priv, VENDOR_IN, value, index, buf, len);
+	/* 呼び出し元は制御転送 1 回で収まる長さだけを渡す。wLength の 16bit 範囲を超えないことを前提とする。 */
+	n = b->ops->control(b->priv, VENDOR_IN, value, index, buf, (u16)len);
 	if (n != (int)len) {
 		if (n != -ENODEV)
 			LOG(b, TORNE_LOG_ERR, "MB86H47A read %#08x: %d bytes", address, n);
@@ -170,7 +171,8 @@ static void write_block(struct torne_bridge *b, u32 address, const u8 *buf, unsi
 	int n;
 
 	memory_setup(address, &value, &index);
-	n = b->ops->control(b->priv, VENDOR_OUT, value, index, (void *)buf, len);
+	/* 呼び出し元は制御転送 1 回で収まる長さだけを渡す。wLength の 16bit 範囲を超えないことを前提とする。 */
+	n = b->ops->control(b->priv, VENDOR_OUT, value, index, (void *)buf, (u16)len);
 	if (n != (int)len) {
 		if (n != -ENODEV)
 			LOG(b, TORNE_LOG_ERR, "MB86H47A write %#08x: %d", address, n);

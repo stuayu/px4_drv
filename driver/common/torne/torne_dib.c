@@ -571,6 +571,8 @@ static void set_bandwidth(struct torne_dib *d, u32 bandwidth)
 {
 	u32 timf = d->timf;
 
+	(void)bandwidth; /* 現在の実装は帯域引数を使わない (未使用引数の MSVC 警告を避けるための明示) */
+
 	if (d->timf == 0)
 		timf = d->timf_default;
 	dib_write_word(d, 29, (timf >> 16) & 0xffff);
@@ -637,6 +639,7 @@ static void reset_pll(struct torne_dib *d)
 /* dib8000_update_pll for the DiB8000: only the ratio update is reachable */
 static void update_pll(struct torne_dib *d, const struct bandwidth_config *pll, u32 bandwidth, u8 ratio)
 {
+	(void)bandwidth; /* ratio 更新だけを行うため、帯域引数は使わない */
 	u16 reg1856 = dib_read_word(d, 1856);
 	u8 prediv = reg1856 & 0x3f;
 	u8 loopdiv = (reg1856 >> 6) & 0x3f;
@@ -1053,7 +1056,7 @@ static int set_layer(struct torne_dib *d, u8 layer_index, int max_constellation)
 		break;
 	}
 
-	time_intlv = fls8(layer->interleaving); /* fls() */
+	time_intlv = (u16)fls8(layer->interleaving); /* fls() */
 	if (time_intlv > 3 && !(time_intlv == 4 && d->c.isdbt_sb_mode == 1))
 		time_intlv = 0;
 
