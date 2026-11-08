@@ -112,6 +112,134 @@ static void emit_packet(void *context, const t230c_ts_u8 *packet)
 	emitted->count++;
 }
 
+/*
+ * J.83 Annex B は Annex A と次の2点だけが違う (TBS の si2168.c dd0e720e、
+ * set_frontend の SYS_DVBC_ANNEX_B 分岐と status の 0x98 を参照)。
+ * - 配信方式の値 0x10 (Annex A は 0x30) をプロパティ 0x0a10 に書く
+ * - シンボルレートをプロパティ 0x1602 に書く (Annex A は 0x1102)
+ * - 状態要求は 0x98 01 で、応答は10バイト (Annex A は 0x90 01 と9バイト)
+ */
+struct si2168_i2c_mock {
+	t230c_u8 writes[32][8];
+	size_t write_sizes[32];
+	unsigned int write_count;
+	t230c_u8 status[16];
+};
+
+static int si2168_i2c_mock_request(void *priv, const struct i2c_comm_request *req, int num)
+{
+	struct si2168_i2c_mock *mock = priv;
+
+	if (num != 1 || req[0].addr != 0x64)
+		return -EINVAL;
+	if (req[0].req == I2C_WRITE_REQUEST) {
+		if (mock->write_count >= 32 || req[0].len > 8)
+			return -EMSGSIZE;
+		memcpy(mock->writes[mock->write_count], req[0].data, (size_t)req[0].len);
+		mock->write_sizes[mock->write_count++] = (size_t)req[0].len;
+		return 0;
+	}
+	if (req[0].req == I2C_READ_REQUEST) {
+		if (req[0].len > (int)sizeof(mock->status))
+			return -EMSGSIZE;
+		memcpy(req[0].data, mock->status, (size_t)req[0].len);
+		return 0;
+	}
+	return -EINVAL;
+}
+
+static t230c_u64 si2168_i2c_mock_now(void *context)
+{
+	(void)context;
+	return 0;
+}
+
+static void si2168_i2c_mock_sleep(void *context, t230c_u32 usec)
+{
+	(void)context;
+	(void)usec;
+}
+
+static int si2168_mock_has_write(const struct si2168_i2c_mock *mock, const t230c_u8 *data, size_t size)
+{
+	unsigned int i;
+
+	for (i = 0; i < mock->write_count; ++i)
+		if (mock->write_sizes[i] == size && memcmp(mock->writes[i], data, size) == 0)
+			return 1;
+	return 0;
+}
+
+static int j83b_annex_b_tests(void)
+{
+	static const t230c_u8 annex_b_delivery[] = { 0x14, 0x00, 0x0a, 0x10, 0x16, 0x00 };
+	static const t230c_u8 annex_b_symbol[] = { 0x14, 0x00, 0x02, 0x16, 0xe0, 0x15 };
+	static const t230c_u8 annex_a_delivery[] = { 0x14, 0x00, 0x0a, 0x10, 0x36, 0x00 };
+	static const t230c_u8 annex_b_status[] = { 0x98, 0x01 };
+	static const t230c_u8 annex_a_status[] = { 0x90, 0x01 };
+	struct si2168_command commands[SI2168_MAX_COMMANDS];
+	struct si2168_i2c_mock mock;
+	struct i2c_comm_master master;
+	struct si2168 demod;
+	size_t count = 0;
+	bool locked = false;
+	t230c_s32 cnr = 0;
+
+	/* 5.6 Msym/s の J.83B コマンドは、配信方式と0x1602のシンボルレートを含む */
+	CHECK(si2168_build_cable_tune_commands(SI2168_CABLE_ANNEX_B, 5600, 6, 0x26, true,
+					       commands, SI2168_MAX_COMMANDS, &count) == 0);
+	CHECK(count == SI2168_MAX_COMMANDS);
+	CHECK(commands[7].length == sizeof(annex_b_delivery) &&
+	      memcmp(commands[7].data, annex_b_delivery, sizeof(annex_b_delivery)) == 0);
+	CHECK(commands[8].length == sizeof(annex_b_symbol) &&
+	      memcmp(commands[8].data, annex_b_symbol, sizeof(annex_b_symbol)) == 0);
+
+	/* Annex A は従来の 0x30 と 0x1102 を使い、出力を変えない */
+	CHECK(si2168_build_cable_tune_commands(SI2168_CABLE_ANNEX_A, 5274, 6, 0x26, true,
+					       commands, SI2168_MAX_COMMANDS, &count) == 0);
+	CHECK(memcmp(commands[7].data, annex_a_delivery, sizeof(annex_a_delivery)) == 0);
+	CHECK(commands[7].data[4] == 0x36 && commands[8].data[3] == 0x11);
+	CHECK(commands[8].data[4] == 0x9a && commands[8].data[5] == 0x14);
+
+	/* 不正な方式は拒否する */
+	CHECK(si2168_build_cable_tune_commands((enum si2168_cable_annex)7, 5600, 6, 0x26, true,
+					       commands, SI2168_MAX_COMMANDS, &count) == -EINVAL);
+
+	/* 模擬 I2C で、J.83B の選局と状態要求の書き込み列を確かめる */
+	memset(&mock, 0, sizeof(mock));
+	mock.status[0] = 0x80;
+	mock.status[2] = 0x06;
+	mock.status[3] = 0x30;
+	master.gate_ctrl = NULL;
+	master.request = si2168_i2c_mock_request;
+	master.priv = &mock;
+	memset(&demod, 0, sizeof(demod));
+	demod.i2c = &master;
+	demod.now_ms = si2168_i2c_mock_now;
+	demod.sleep_us = si2168_i2c_mock_sleep;
+	demod.ts_mode = 0x26;
+	demod.ts_clock_inv = true;
+	CHECK(si2168_tune_cable(&demod, SI2168_CABLE_ANNEX_B, 5600, 6, ~(t230c_u64)0) == 0);
+	CHECK(si2168_mock_has_write(&mock, annex_b_delivery, sizeof(annex_b_delivery)));
+	CHECK(si2168_mock_has_write(&mock, annex_b_symbol, sizeof(annex_b_symbol)));
+	CHECK(!si2168_mock_has_write(&mock, annex_a_delivery, sizeof(annex_a_delivery)));
+
+	/* ロック確認は 0x98 を使う。Annex A の 0x90 は送らない */
+	mock.write_count = 0;
+	CHECK(si2168_read_lock(&demod, &locked, &cnr, ~(t230c_u64)0) == 0);
+	CHECK(mock.write_count == 1 && mock.write_sizes[0] == sizeof(annex_b_status) &&
+	      memcmp(mock.writes[0], annex_b_status, sizeof(annex_b_status)) == 0);
+	CHECK(locked && cnr == 0x30 * 250);
+
+	/* Annex A へ戻すと、状態要求も 0x90 に戻る */
+	CHECK(si2168_tune(&demod, 5274, 6, ~(t230c_u64)0) == 0);
+	mock.write_count = 0;
+	CHECK(si2168_read_lock(&demod, &locked, &cnr, ~(t230c_u64)0) == 0);
+	CHECK(mock.write_count == 1 && mock.write_sizes[0] == sizeof(annex_a_status) &&
+	      memcmp(mock.writes[0], annex_a_status, sizeof(annex_a_status)) == 0);
+	return 0;
+}
+
 int main(void)
 {
 	static const struct t230c_usb_ops ops = {
@@ -275,5 +403,6 @@ int main(void)
 	CHECK(emitted.count == 5 && memcmp(emitted.data, packets, sizeof(packets)) == 0);
 	t230c_ts_sync_reset(&sync);
 	CHECK(sync.pending_size == 0 && !sync.synchronized);
+	CHECK(j83b_annex_b_tests() == 0);
 	return 0;
 }

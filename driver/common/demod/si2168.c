@@ -163,6 +163,7 @@ int si2168_init(struct si2168 *demod,
 	demod->set_deadline = set_deadline;
 	demod->ts_mode = ts_mode;
 	demod->ts_clock_inv = ts_clock_inv;
+	demod->annex = SI2168_CABLE_ANNEX_A;
 
 	ret = si2168_command(demod, initialize, sizeof(initialize), 0,
 			     ~(t230c_u64)0, NULL);
@@ -226,6 +227,19 @@ int si2168_build_tune_commands(t230c_u32 symbol_rate_ksps,
 			       struct si2168_command *commands,
 			       size_t capacity, size_t *count)
 {
+	return si2168_build_cable_tune_commands(SI2168_CABLE_ANNEX_A,
+						symbol_rate_ksps, bandwidth_mhz,
+						ts_mode, ts_clock_inv,
+						commands, capacity, count);
+}
+
+int si2168_build_cable_tune_commands(enum si2168_cable_annex annex,
+				     t230c_u32 symbol_rate_ksps,
+				     t230c_u32 bandwidth_mhz, t230c_u8 ts_mode,
+				     bool ts_clock_inv,
+				     struct si2168_command *commands,
+				     size_t capacity, size_t *count)
+{
 	static const t230c_u8 initial[][6] = {
 		{ 0x88, 0x02, 0x02, 0x02, 0x02, 0x00 },
 		{ 0x89, 0x21, 0x06, 0x11, 0x89, 0xf0 },
@@ -253,6 +267,8 @@ int si2168_build_tune_commands(t230c_u32 symbol_rate_ksps,
 	    symbol_rate_ksps < 1000 || symbol_rate_ksps > 7200 ||
 	    bandwidth_mhz != 6)
 		return -EINVAL;
+	if (annex != SI2168_CABLE_ANNEX_A && annex != SI2168_CABLE_ANNEX_B)
+		return -EINVAL;
 	symbol_rate = (t230c_u16)symbol_rate_ksps;
 	for (i = 0; i < sizeof(initial) / sizeof(initial[0]); ++i) {
 		t230c_u8 data[6];
@@ -261,13 +277,16 @@ int si2168_build_tune_commands(t230c_u32 symbol_rate_ksps,
 
 		memcpy(data, initial[i], sizeof(data));
 		if (i == 8) {
+			/* 0x1102 は Annex A、0x1602 は Annex B のシンボルレート */
+			data[3] = annex == SI2168_CABLE_ANNEX_B ? 0x16 : 0x11;
 			data[4] = (t230c_u8)symbol_rate;
 			data[5] = (t230c_u8)(symbol_rate >> 8);
 		}
 		if ((i == 10 || i == 11) && !ts_clock_inv)
 			data[5] |= 0x10;
+		/* 配信方式は Annex A が 0x30、Annex B が 0x10 */
 		if (i == 7)
-			data[4] = (t230c_u8)(0x30 | bandwidth_mhz);
+			data[4] = (t230c_u8)((annex == SI2168_CABLE_ANNEX_B ? 0x10 : 0x30) | bandwidth_mhz);
 		si2168_add_command(commands, &n, data, length,
 				   response_lengths[i]);
 	}
@@ -293,18 +312,30 @@ int si2168_build_tune_commands(t230c_u32 symbol_rate_ksps,
 int si2168_tune(struct si2168 *demod, t230c_u32 symbol_rate_ksps,
 		t230c_u32 bandwidth_mhz, t230c_u64 deadline_ms)
 {
+	return si2168_tune_cable(demod, SI2168_CABLE_ANNEX_A, symbol_rate_ksps,
+				 bandwidth_mhz, deadline_ms);
+}
+
+int si2168_tune_cable(struct si2168 *demod, enum si2168_cable_annex annex,
+		      t230c_u32 symbol_rate_ksps, t230c_u32 bandwidth_mhz,
+		      t230c_u64 deadline_ms)
+{
 	struct si2168_command commands[SI2168_MAX_COMMANDS];
 	size_t count, i;
 	int ret;
 
 	if (!demod)
 		return -EINVAL;
-	ret = si2168_build_tune_commands(symbol_rate_ksps, bandwidth_mhz,
-					demod->ts_mode,
-					demod->ts_clock_inv,
-					commands, SI2168_MAX_COMMANDS, &count);
+	ret = si2168_build_cable_tune_commands(annex, symbol_rate_ksps,
+					       bandwidth_mhz,
+					       demod->ts_mode,
+					       demod->ts_clock_inv,
+					       commands, SI2168_MAX_COMMANDS,
+					       &count);
 	if (ret)
 		return ret;
+	/* ロック確認は、この選局で送った方式の状態要求を使う */
+	demod->annex = annex;
 	for (i = 0; i < count; ++i) {
 		t230c_u8 response[SI2168_ARGUMENT_SIZE];
 		ret = si2168_command(demod, commands[i].data,
@@ -320,13 +351,25 @@ int si2168_tune(struct si2168 *demod, t230c_u32 symbol_rate_ksps,
 int si2168_read_lock(struct si2168 *demod, bool *locked,
 		     t230c_s32 *cnr_millibel, t230c_u64 deadline_ms)
 {
-	static const t230c_u8 command[] = { 0x90, 0x01 };
-	t230c_u8 response[9];
+	static const t230c_u8 annex_a_command[] = { 0x90, 0x01 };
+	static const t230c_u8 annex_b_command[] = { 0x98, 0x01 };
+	t230c_u8 response[10];
+	const t230c_u8 *command;
+	size_t command_size, response_size;
 	int ret;
 
 	if (!demod || !locked || !cnr_millibel)
 		return -EINVAL;
-	ret = si2168_command(demod, command, sizeof(command), sizeof(response),
+	if (demod->annex == SI2168_CABLE_ANNEX_B) {
+		command = annex_b_command;
+		command_size = sizeof(annex_b_command);
+		response_size = 10;
+	} else {
+		command = annex_a_command;
+		command_size = sizeof(annex_a_command);
+		response_size = 9;
+	}
+	ret = si2168_command(demod, command, command_size, response_size,
 			     deadline_ms, response);
 	if (ret)
 		return ret;
