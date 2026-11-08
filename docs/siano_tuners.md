@@ -24,7 +24,7 @@ On Windows and macOS, `BonDriver_PX4::GetSignalLevel()` reports Siano's demodula
 
 Siano RIO support in this repository is limited to terrestrial ISDB-T. The public Linux `smsdvb` frontend registers only `SYS_DVBT` and `SYS_ISDBT`, and the firmware named in this repository (`isdbt_rio.inp`) is the ISDB-T image. No public Siano firmware, mode, or register document describes DVB-C, ISDB-C, or ITU-T J.83 Annex B reception. PX-S1UD V2.0 and PX-Q1UD therefore have no ISDB-C or J.83B path in any OS build.
 
-A user report says PX-S1UD receives SKY PerfecTV! Premium Hikari (J.83B). The report includes no firmware name, mode, channel, or TS log, and this repository has not reproduced it. Until a capture shows lock and valid TS on a J.83B signal, the report is not treated as evidence of support.
+The user reported PX-S1UD J.83B reception for SKY PerfecTV! Premium Hikari, but no primary technical evidence or TS record was found. The public Siano sources above do not show a J.83B mode, and the report has no firmware name, mode, channel, or TS log. Until a capture shows lock and valid TS on a J.83B signal, Siano J.83B stays unimplemented.
 
 ## Verification status
 
