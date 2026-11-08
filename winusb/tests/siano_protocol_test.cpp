@@ -293,7 +293,7 @@ int main()
 	}
 
 	{
-		const auto firmware_path = std::filesystem::temp_directory_path() /
+		const auto firmware_path = std::filesystem::current_path() /
 			"px4drv_siano_firmware_fixture.inp";
 		const std::array<std::uint8_t, 16> firmware = {
 			0, 0, 0, 0, 4, 0, 0, 0, 0x00, 0x10, 0x00, 0x00,

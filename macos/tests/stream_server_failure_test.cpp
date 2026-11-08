@@ -93,7 +93,7 @@ bool WaitForDisconnect(int fd)
 
 int main()
 {
-	char runtime_template[] = "/tmp/px4-stream-failure-XXXXXX";
+	char runtime_template[] = "px4-stream-failure-XXXXXX";
 	char *runtime_dir = mkdtemp(runtime_template);
 	if (!runtime_dir) {
 		std::perror("mkdtemp");

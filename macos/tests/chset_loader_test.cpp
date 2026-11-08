@@ -15,7 +15,7 @@ public:
 
 static bool run(const std::string &content, bool expected, bool check_channel = false)
 {
-	char path[] = "/tmp/px4-chset-test-XXXXXX";
+	char path[] = "px4-chset-test-XXXXXX";
 	int fd = mkstemp(path);
 	if (fd < 0) return false;
 	bool ok = write(fd, content.data(), content.size()) == static_cast<ssize_t>(content.size());
@@ -41,7 +41,7 @@ static bool run(const std::string &content, bool expected, bool check_channel = 
 
 static std::wstring write_temp(const std::string &content, std::string &name)
 {
-	char path[] = "/tmp/px4-chset-test-XXXXXX";
+	char path[] = "px4-chset-test-XXXXXX";
 	int fd = mkstemp(path);
 	if (fd < 0) return std::wstring();
 	bool ok = write(fd, content.data(), content.size()) == static_cast<ssize_t>(content.size());
@@ -65,7 +65,8 @@ static bool run_fallback()
 	const std::wstring explicit_path = write_temp("$Space\t0\nExplicit\t0\t0\t13\t0\n", explicit_name);
 	const std::wstring default_path = write_temp("$Space\t0\nDefault\t0\t0\t13\t0\n", default_name);
 	const std::wstring broken_path = write_temp("$Space\t0\nPartial\t0\t0\t13\t0\n;" + std::string(300, 'x') + "\n", broken_name);
-	const std::wstring missing_path = L"/tmp/px4-chset-test-missing";
+	const std::string missing_name = "px4-chset-test-missing-" + std::to_string(getpid());
+	const std::wstring missing_path(missing_name.begin(), missing_name.end());
 	bool ok = !explicit_path.empty() && !default_path.empty() && !broken_path.empty();
 
 	px4::ChannelSet configured;

@@ -28,7 +28,7 @@ int main()
 
     Bytes invalid(18, 0);
     CHECK(ValidateFirmware(invalid) != 0);
-    const auto bad_path=std::filesystem::temp_directory_path()/"t230c-invalid.fw";
+    const auto bad_path=std::filesystem::current_path()/"t230c-invalid.fw";
     { std::ofstream f(bad_path,std::ios::binary); f.write(reinterpret_cast<const char*>(invalid.data()),invalid.size()); }
     Bytes loaded; std::string error;
     CHECK(LoadFirmwareFile(bad_path.wstring(),loaded,error)!=0 && !error.empty());
@@ -108,7 +108,7 @@ int main()
     }, [](unsigned) {});
     CHECK(bad_status.ReadLock(status_locked, status_cnr, std::chrono::steady_clock::now() + std::chrono::seconds(1)) != 0);
 
-    const auto temp = std::filesystem::temp_directory_path() /
+    const auto temp = std::filesystem::current_path() /
         ("t230c-rom-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     CHECK(std::filesystem::create_directory(temp));
     TunerFirmwarePaths paths{(temp/"rom60.fw").wstring(), (temp/"rom61.fw").wstring(), (temp/"fallback.fw").wstring()};

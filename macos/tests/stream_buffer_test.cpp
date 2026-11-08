@@ -666,7 +666,7 @@ private:
 /* ISDB-C の選局では、ロック前に届いた TS を最初の TS として報告しない。 */
 bool IsdbCTuneTimingStartsAtLock()
 {
-	char path[] = "/tmp/px4-tune-timing-XXXXXX";
+	char path[] = "px4-tune-timing-XXXXXX";
 	const int fd = mkstemp(path);
 	if (fd < 0)
 		return false;
