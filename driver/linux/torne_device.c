@@ -14,6 +14,7 @@
 #include <linux/usb.h>
 #include <linux/vmalloc.h>
 
+#include "px4_device_params.h"
 #include "px4_usb_params.h"
 
 #define TORNE_CTRL_TIMEOUT_MS 1000U
