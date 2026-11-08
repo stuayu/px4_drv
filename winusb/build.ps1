@@ -315,6 +315,7 @@ Copy-Item pkg/DriverHost_PX4/LICENCE.siano dist/BonDriver_PX-Q1UD_64bit/LICENCE.
 Copy-Item build/x86/Release-static/BonDriver_PX4.dll dist/BonDriver_T230C_32bit/BonDriver_T230C.dll
 Copy-Item pkg/BonDriver_PX4/BonDriver_T230C.ini dist/BonDriver_T230C_32bit/BonDriver_T230C.ini
 Copy-Item pkg/BonDriver_PX4/BonDriver_T230C-C.ChSet.txt dist/BonDriver_T230C_32bit/BonDriver_T230C-C.ChSet.txt
+Copy-Item pkg/BonDriver_PX4/BonDriver_PX4-J83B.ChSet.txt dist/BonDriver_T230C_32bit/BonDriver_PX4-J83B.ChSet.txt
 Copy-Item build/x86/Release-static/DriverHost_PX4.exe dist/BonDriver_T230C_32bit/DriverHost_PX4.exe
 Copy-Item pkg/DriverHost_PX4/DriverHost_PX4.ini dist/BonDriver_T230C_32bit/DriverHost_PX4.ini
 
@@ -323,6 +324,7 @@ Copy-Item pkg/DriverHost_PX4/DriverHost_PX4.ini dist/BonDriver_T230C_32bit/Drive
 Copy-Item build/x64/Release-static/BonDriver_PX4.dll dist/BonDriver_T230C_64bit/BonDriver_T230C.dll
 Copy-Item pkg/BonDriver_PX4/BonDriver_T230C.ini dist/BonDriver_T230C_64bit/BonDriver_T230C.ini
 Copy-Item pkg/BonDriver_PX4/BonDriver_T230C-C.ChSet.txt dist/BonDriver_T230C_64bit/BonDriver_T230C-C.ChSet.txt
+Copy-Item pkg/BonDriver_PX4/BonDriver_PX4-J83B.ChSet.txt dist/BonDriver_T230C_64bit/BonDriver_PX4-J83B.ChSet.txt
 Copy-Item build/x64/Release-static/DriverHost_PX4.exe dist/BonDriver_T230C_64bit/DriverHost_PX4.exe
 Copy-Item pkg/DriverHost_PX4/DriverHost_PX4.ini dist/BonDriver_T230C_64bit/DriverHost_PX4.ini
 
