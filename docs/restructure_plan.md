@@ -94,6 +94,19 @@ docs/                       文書。機種固有の別紙は docs/devices/
 .claude/skills/             このリポジトリ用のレビューと不具合調査の skill
 ```
 
+### 2.0 目標の構成と実際の配置
+
+段階 1 と 2 では、ビルドファイルと配布処理の変更量を抑えるため、上の目標の名前をそのまま使わずに次の配置としました。目標の構成のうち `config/` によるデバイス定義の一本化は段階 3 の未完了項目です。
+
+| 目標の構成 | 実際の配置 |
+|---|---|
+| `common/` | `driver/common/` (`bridge/`、`demod/`、`tuner/`、`ts/`、`signal/`、`include/`、`torne/`) |
+| `linux/` | `driver/linux/`。ユーザー API は従来どおり `include/` |
+| `host/server/` | `host/core/` (`ctrl_server`、`stream_server`、`card_server`、`server_base`) |
+| `host/devices/`、`host/core/` | 目標と同じ。共通の補助は `host/common/` |
+| `windows/` | 従来どおり `winusb/` |
+| `tests/` | 共通層とホスト層の試験は `tests/`、OS 固有の試験は `winusb/tests/` と `macos/tests/` |
+
 ### 2.1 維持する契約
 
 - Linux: デバイスファイル名 (`/dev/px4video*`、`/dev/pxmlt5video*` など)、ioctl 番号と構造体、モジュール名 `px4_drv`、DKMS のパッケージ名。
@@ -125,7 +138,7 @@ docs/                       文書。機種固有の別紙は docs/devices/
 
 ### 段階 2: 共通層とホスト層の統合
 
-- macOS 版と WinUSB 版のサーバー実装の差分を洗い出し、共通部を `host/server/` へまとめる。OS 固有部は socket / named pipe の薄い層に残す。
+- macOS 版と WinUSB 版のサーバー実装の差分を洗い出し、共通部を `host/server/` (実際の配置は `host/core/`) へまとめる。OS 固有部は socket / named pipe の薄い層に残す。
 - platform 抽象 (`common/include/compat.h`) に、mutex、sleep、時刻、ログ、メモリ確保の名前をそろえる。Linux カーネル、Windows、POSIX の実装は各 OS 層に置く。
 - fwtool の重複を解消する。
 
@@ -188,6 +201,6 @@ docs/                       文書。機種固有の別紙は docs/devices/
 
 ## 5. 確認事項
 
-1. 作業ツリーには未コミットの変更が 134 件ある。ファイル移動の前に、これを基準として固定する方法を決める必要がある。
-2. この Mac では Linux カーネルモジュールと Windows 版をビルドできない。GitHub Actions で確かめるには、作業ブランチの push が必要になる。
-3. T230C は Linux 経路を追加したが、3 OS とも実機が未確認。
+1. 計画時点の作業ツリーにあった未コミットの変更 134 件は、段階 0 で基準のコミットとして固定しました。
+2. 検証環境の Mac では Linux カーネルモジュールと Windows 版をビルドできないため、Linux は別の Linux 環境、Windows は Visual Studio のある Windows 環境でビルドしています。GitHub Actions の Linux / WinUSB / macOS ビルド (`.github/workflows/`) は、作業ブランチを push したときの確認に使います。
+3. T230C は Windows で ISDB-C の実機受信を確認しました ([T230C の説明](t230c.md))。Linux と macOS の実機と、J.83B の実機信号は未確認です。
