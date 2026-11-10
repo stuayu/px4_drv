@@ -1,44 +1,50 @@
 # PX-S1UD V2.0 / PX-Q1UD
 
-PX-S1UD V2.0 is a one-channel terrestrial tuner. PX-Q1UD supports four simultaneous terrestrial channels. Both are USB 2.0 devices without an internal B-CAS reader. Their Siano RIO tuner path differs from PX-S1UR, which uses the ITE/IT930x path already present in px4_drv.
+PX-S1UD V2.0 は地上デジタル1チャンネル、PX-Q1UD は地上デジタル4チャンネル同時受信のチューナーです。どちらも USB 2.0 機器で、内蔵 B-CAS カードリーダーはありません。チューナー部は Siano RIO で、px4_drv が従来から扱う ITE / IT930x 経路の PX-S1UR とは別のプロトコルです。
 
-The Linux USB driver table identifies `3275:0080` as a Siano RIO device. The official PLEX download page lists Windows drivers for both models and a Linux download for PX-S1UD. PLEX does not publish the USB ID or PX-Q1UD's internal USB topology in its product specifications.
+Linux の USB ドライバーの ID 表では、`3275:0080` を Siano RIO 機器として扱っています。PLEX の公式ダウンロードページは両機種の Windows ドライバーと PX-S1UD の Linux 版を掲載していますが、製品仕様には USB ID と PX-Q1UD の内部 USB 構成の記載がありません。
 
-## OS paths
+## OS ごとの経路
 
-- **Windows:** DriverHost_PX4 exposes one ISDB-T receiver for each Siano RIO USB function. PX-S1UD V2.0 uses one function. PX-Q1UD's four-function layout is reported by third-party device inventories; the topology still requires confirmation on PX-Q1UD hardware.
-- **macOS:** DriverHost_PX4 uses the same Siano protocol path as Windows. The bundled `isdbt_rio.inp` firmware is accompanied by `LICENCE.siano`.
-- **Linux:** px4_drv binds `3275:0080` and creates one terrestrial `/dev/px4video*` receiver for each Siano RIO USB function. The Linux upstream `smsusb` driver matches the same USB ID and publishes a DVB frontend, so each USB function can be owned by only one of the drivers. Unbind the device from `smsusb` before binding it to px4_drv; doing so can interrupt any recording that currently uses the Siano device. The driver requests `isdbt_rio.inp` through the kernel firmware loader, so install that file in the system firmware search path first.
+- **Windows:** DriverHost_PX4 は Siano RIO の USB function ごとに ISDB-T の受信機を1つ公開します。PX-S1UD V2.0 は1 function です。PX-Q1UD の4 function 構成は第三者のデバイス一覧に基づく情報で、PX-Q1UD 実機での構成確認が残っています。
+- **macOS:** DriverHost_PX4 は Windows と同じ Siano プロトコルの経路を使います。同梱の `isdbt_rio.inp` ファームウェアには `LICENCE.siano` を添付しています。
+- **Linux:** px4_drv は `3275:0080` に結び付き、Siano RIO の USB function ごとに地上デジタルの `/dev/px4video*` を1つ作ります。Linux 標準の `smsusb` ドライバーも同じ USB ID に一致して DVB frontend を公開するため、1つの USB function を所有できるのはどちらか一方のドライバーだけです。px4_drv へ結び付ける前に `smsusb` から unbind します。unbind すると、その Siano 機器を使っている録画が中断されます。ドライバーはカーネルのファームウェアローダーで `isdbt_rio.inp` を要求するため、先にシステムのファームウェア検索パスへ配置してください。
 
-Windows requires the included WinUSB INF to be installed for `3275:0080`. The official BDA driver and the WinUSB driver cannot own the same USB function at once. No card reader is exposed for either product, so descrambling requires a separate card reader and the applicable software.
+Windows では、同梱の WinUSB 用 INF を `3275:0080` へ導入します。公式 BDA ドライバーと WinUSB ドライバーは同じ USB function を同時に所有できません。どちらの製品もカードリーダーを公開しないため、復号には別のカードリーダーと対応するソフトウェアが必要です。
 
-## Firmware
+## ファームウェア
 
-The Windows/macOS host expects `isdbt_rio.inp` next to DriverHost_PX4, unless `SianoFirmware` in `DriverHost_PX4.ini` names another path. Linux asks the kernel firmware loader for the same filename, normally from `/lib/firmware`. The bundled binary matches the copy in the upstream Linux firmware repository (SHA-256 `054520642d5d09cb7ab7d08dbd6fd9ba9365de56adf2e7d7d06927f9845ff818`). Its redistribution terms are included in `LICENCE.siano`.
+Windows / macOS のホストは、`DriverHost_PX4.ini` の `SianoFirmware` で別のパスを指定しない限り、DriverHost_PX4 と同じ場所の `isdbt_rio.inp` を読みます。Linux はカーネルのファームウェアローダーへ同じファイル名を要求し、通常は `/lib/firmware` から読み込まれます。同梱のバイナリは上流の Linux firmware リポジトリのファイルと一致します (SHA-256 `054520642d5d09cb7ab7d08dbd6fd9ba9365de56adf2e7d7d06927f9845ff818`)。再配布の条件は `LICENCE.siano` にあります。
 
-## Signal reporting
+## 信号値
 
-On Windows and macOS, `BonDriver_PX4::GetSignalLevel()` reports Siano's demodulator SNR as C/N in dB. `GET_STATISTICS_EX_RES` begins with a 32-bit `request_result`, followed by `sms_isdbt_stats_ex`; `is_demod_locked` is at offset 12 and signed `SNR` (integer dB) at offset 20 within that structure. The host converts SNR to millidecibels by multiplying by 1000, then the existing BonDriver interface converts it back to dB. This is not calibrated RF input power in dBm. The Linux upstream Siano DVB frontend uses the same SNR field and publishes it in millidecibels.
+Windows と macOS では、`BonDriver_PX4::GetSignalLevel()` が Siano の復調器 SNR を C/N (dB) として返します。`GET_STATISTICS_EX_RES` は32ビットの `request_result` で始まり、その後に `sms_isdbt_stats_ex` が続きます。この構造体の中で `is_demod_locked` はオフセット12、符号付きの `SNR` (整数 dB) はオフセット20です。ホストは SNR を1000倍してミリデシベルへ換算し、既存の BonDriver インターフェースが dB へ戻します。校正済みの RF 入力電力 (dBm) ではありません。Linux 上流の Siano DVB frontend も同じ SNR フィールドを使い、ミリデシベルで公開しています。
 
-## ISDB-C and J.83B
+## ISDB-C と J.83B
 
-Siano RIO support in this repository is limited to terrestrial ISDB-T. The public Linux `smsdvb` frontend registers only `SYS_DVBT` and `SYS_ISDBT`, and the firmware named in this repository (`isdbt_rio.inp`) is the ISDB-T image. No public Siano firmware, mode, or register document describes DVB-C, ISDB-C, or ITU-T J.83 Annex B reception. PX-S1UD V2.0 and PX-Q1UD therefore have no ISDB-C or J.83B path in any OS build.
+このリポジトリの Siano RIO 対応は地上デジタル (ISDB-T) に限られます。Linux 公開版の `smsdvb` frontend が登録する方式は `SYS_DVBT` と `SYS_ISDBT` だけで、このリポジトリが使うファームウェア (`isdbt_rio.inp`) は ISDB-T 用のイメージです。DVB-C、ISDB-C、ITU-T J.83 Annex B の受信を記載した Siano の公開ファームウェア、モード、レジスターの資料は見つかっていません。このため PX-S1UD V2.0 と PX-Q1UD には、どの OS のビルドにも ISDB-C と J.83B の経路がありません。
 
-The user reported PX-S1UD J.83B reception for SKY PerfecTV! Premium Hikari, but no primary technical evidence or TS record was found. The public Siano sources above do not show a J.83B mode, and the report has no firmware name, mode, channel, or TS log. Until a capture shows lock and valid TS on a J.83B signal, Siano J.83B stays unimplemented.
+PX-S1UD でスカパー！プレミアムサービス光の J.83B を受信できたという報告がありましたが、技術的な一次資料と TS の記録は見つかっていません。上記の Siano の公開ソースに J.83B のモードはなく、報告にもファームウェア名、モード、チャンネル、TS のログがありません。J.83B の信号でロックと正常な TS を示す記録が得られるまで、Siano の J.83B は実装の対象外です。
 
-## Verification status
+## 検証状況
 
-The portable protocol codec has automated tests. The macOS DriverHost builds with the Siano backend and CTest passes. The Windows v145 x86/x64 `build.ps1` and hardware-independent tests pass. On Windows hardware, 60-second captures on 13ch, 15ch, and 22ch had zero CC, TEI, and sync errors and average bitrates within 0.2% of the official BDA driver. In a four-function concurrent run, all four channels (13ch, 15ch, 22ch, 28ch) produced TS. A separate function-level check found that USB function `&0&1` fails to produce `BDA_DATA` on 28ch under WinUSB although the official BDA driver receives 28ch on that function; the other three WinUSB functions received 28ch. The WinUSB host now reports a tune failure when no TS data arrives, and this function-specific reception gap remains unresolved. Linux Siano reception, 30-minute captures, hotplug, and driver ownership switching still require hardware verification. Until the remaining checks pass, PX-S1UD V2.0 and PX-Q1UD remain experimental.
+移植可能なプロトコル処理には自動試験があります。macOS の DriverHost は Siano の経路を含めてビルドでき、CTest も通過します。Windows の v145 x86 / x64 の `build.ps1` とハードウェア非依存の試験も通過します。
 
-## References
+Windows 実機では、13ch・15ch・22ch の60秒録画で CC・TEI・同期エラーがすべて0で、平均ビットレートは公式 BDA ドライバーとの差が0.2%以内でした。4 function の同時受信では、4チャンネル (13ch・15ch・22ch・28ch) のすべてで TS を得ました。
 
-- [PLEX PX-S1UD V2.0 specifications](https://plex-net.co.jp/itemreco/px-s1ud/)
-- [PLEX PX-Q1UD specifications](https://plex-net.co.jp/item/tv-tuner/px-q1ud/)
-- [PLEX driver downloads](https://plex-net.co.jp/download/)
-- [Linux upstream Siano USB driver](https://github.com/torvalds/linux/blob/master/drivers/media/usb/siano/smsusb.c)
-- [Linux upstream Siano DVB statistics](https://github.com/torvalds/linux/blob/master/drivers/media/common/siano/smsdvb-main.c#L2880-L2932)
-- [Siano extended statistics structure](https://github.com/torvalds/linux/blob/master/drivers/media/common/siano/smscoreapi.h#L3468-L3479)
-- [Linux upstream Siano firmware names](https://codebrowser.dev/linux/linux/drivers/media/common/siano/smscoreapi.h.html)
-- [Upstream `isdbt_rio.inp`](https://kernel.googlesource.com/pub/scm/linux/kernel/git/firmware/linux-firmware/+/refs/heads/main/isdbt_rio.inp)
-- [GPL Siano RIO userspace reference implementation](https://github.com/Khronos31/siano-userland)
-- [Third-party USB inventory reference for PX-Q1UD's four Siano functions](https://github.com/tsukumijima/ISDBScanner/blob/master/isdb_scanner/tuner.py)
+一方、function ごとの確認では、USB function `&0&1` が WinUSB で 28ch の `BDA_DATA` を出さず、公式 BDA ドライバーでは同じ function で 28ch を受信できました。他の3 function は WinUSB でも 28ch を受信できました。WinUSB のホストは TS が届かない場合に選局失敗を返すようにしましたが、この function 固有の受信差は未解決です。
+
+Linux での Siano の受信、30分録画、ホットプラグ、ドライバーの所有権の切り替えは実機での確認が残っています。残りの確認が済むまで、PX-S1UD V2.0 と PX-Q1UD は実験的な対応です。
+
+## 参考資料
+
+- [PLEX PX-S1UD V2.0 の仕様](https://plex-net.co.jp/itemreco/px-s1ud/)
+- [PLEX PX-Q1UD の仕様](https://plex-net.co.jp/item/tv-tuner/px-q1ud/)
+- [PLEX ドライバーのダウンロード](https://plex-net.co.jp/download/)
+- [Linux 上流の Siano USB ドライバー](https://github.com/torvalds/linux/blob/master/drivers/media/usb/siano/smsusb.c)
+- [Linux 上流の Siano DVB 統計](https://github.com/torvalds/linux/blob/master/drivers/media/common/siano/smsdvb-main.c#L2880-L2932)
+- [Siano 拡張統計の構造体](https://github.com/torvalds/linux/blob/master/drivers/media/common/siano/smscoreapi.h#L3468-L3479)
+- [Linux 上流の Siano ファームウェア名](https://codebrowser.dev/linux/linux/drivers/media/common/siano/smscoreapi.h.html)
+- [上流の `isdbt_rio.inp`](https://kernel.googlesource.com/pub/scm/linux/kernel/git/firmware/linux-firmware/+/refs/heads/main/isdbt_rio.inp)
+- [GPL の Siano RIO ユーザー空間参照実装](https://github.com/Khronos31/siano-userland)
+- [PX-Q1UD の4つの Siano function を示す第三者の USB 一覧](https://github.com/tsukumijima/ISDBScanner/blob/master/isdb_scanner/tuner.py)
