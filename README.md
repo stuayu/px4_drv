@@ -27,11 +27,11 @@ PLEX 社の [Webサイト](http://plex-net.co.jp) にて配布されている公
 | PLEX PX4 系 | ○ | ○ | ○ | 製品ごとの機能差は各設定を参照 |
 | PLEX PX-MLT 系 / DTV02A-4TS-P / DTV02A-5TS-P | ○ | ○ | ○ | ISDB-C / J.83B は [ケーブルテレビ (ISDB-C) / スカパー！プレミアムサービス光 (J.83B) の受信](#ケーブルテレビ-isdb-c--スカパープレミアムサービス光-j83b-の受信) を参照 |
 | ISDB2056 / ISDBT2071 | ○ | ○ | ○ | 製品・ロットごとの検証範囲は別紙を参照 |
-| MyGica T230C 系 (USB `0572:c68a` は Linux の ID 表で T230C2) | △ | △ | △ | ISDB-C のみ (実験的)。Linux と macOS は実機未確認。J.83B の対応を示す根拠なし |
-| Siano RIO (PX-S1UD V2.0 / PX-Q1UD 系) | ○ | ○ | ○ | firmware・製品リビジョン別の確認範囲は [Siano の別紙](docs/siano_tuners.md)を参照 |
-| Sony CECH-ZD1 J (`054c:04b2`) | △ | △ | △ | ISDB-T 1基。実機選局・TS・長時間試験は未完了。Linux は `/dev/tornevideo*` |
+| MyGica T230C 系 (USB `0572:c68a` は Linux の ID 表で T230C2) | △ | △ | △ | ISDB-C と J.83B (実験的)。ISDB-C の実機確認は Windows のみ。J.83B は実機信号で未確認 |
+| Siano RIO (PX-S1UD V2.0 / PX-Q1UD 系) | △ | △ | △ | ISDB-T のみ (実験的)。実機確認は Windows のみで、PX-Q1UD の1機能に未解決の受信差がある。詳細は [Siano の別紙](docs/siano_tuners.md) |
+| Sony CECH-ZD1 J (`054c:04b2`) | △ | △ | △ | ISDB-T 1基。macOS で30分受信、カード、復号を確認済み。Windows / Linux の実機は未確認。Linux は `/dev/tornevideo*` |
 
-T230C 系は、3 OS とも受信経路を持ちますが、Linux と Windows の実機確認が残っています。
+T230C 系、Siano RIO、CECH-ZD1 J は3 OS とも受信経路を持ちますが、上表の OS で実機確認が残っています。
 
 ## 機種別資料
 
@@ -39,6 +39,8 @@ T230C 系は、3 OS とも受信経路を持ちますが、Linux と Windows の
 - [T230C / T230C2 の Linux 参照手順と方式の制限](docs/t230c_linux_reference.md)
 - [Siano RIO と対応チューナー](docs/siano_tuners.md)
 - [Sony CECH-ZD1 J (torne)](docs/devices/torne.md)
+
+設計記録、検証記録、カードリーダーの実装経緯を含む全文書の一覧は [docs/README.md](docs/README.md) にあります。
 
 ## 診断ログ
 
@@ -91,7 +93,7 @@ python3 tools/tune_latency.py --json DriverHost_PX4.log
   - [n0atl 氏のフォーク](https://github.com/n0atl/px4_drv) と [aoiro-labo 氏のフォーク](https://github.com/aoiro-labo/px4_drv) で進められていた対応を基にしている
   - 受信方法は [ケーブルテレビ (ISDB-C) / スカパー！プレミアムサービス光 (J.83B) の受信](#ケーブルテレビ-isdb-c--スカパープレミアムサービス光-j83b-の受信) を参照のこと
 - Siano RIO 系の PX-S1UD V2.0 / PX-Q1UD に対応し、inf ファイルを追加 (実験的)
-- MyGica T230C (USB `0572:c68a`) の ISDB-C 受信に対応し、inf ファイルを追加 (実験的)
+- MyGica T230C (USB `0572:c68a`) の ISDB-C / J.83B 受信に対応し、inf ファイルを追加 (実験的、J.83B は実機未確認)
 - Sony CECH-ZD1 J (torne) の ISDB-T 受信と、内蔵 B-CAS カードスロットの WinSCard 対応を追加
 - DriverHost_PX4 に、ログレベル・カテゴリ・JSON Lines 形式の出力、TS 統計、選局から最初の TS までの時間の内訳、USB 転送履歴を追加
 
@@ -163,8 +165,8 @@ python3 tools/tune_latency.py --json DriverHost_PX4.log
   - pcscd が既定で認識している外付けカードリーダーも引き続き利用できる
 -  PX-MLT 系チューナー (PX-MLT5PE / PX-MLT8PE / DTV02A-4TS-P / DTV02A-5TS-P) において、WinUSB 版と同じくケーブルテレビ (トランスモジュレーション方式: ISDB-C) とスカパー！プレミアムサービス光 (J.83 Annex B) の受信に対応 (v0.7.0 以降)
   - 受信方法は [ケーブルテレビ (ISDB-C) / スカパー！プレミアムサービス光 (J.83B) の受信](#ケーブルテレビ-isdb-c--スカパープレミアムサービス光-j83b-の受信) を参照のこと
-- Siano RIO 系の PX-S1UD V2.0 / PX-Q1UD と、MyGica T230C2 の ISDB-C 受信を `/dev/px4video*` として追加 (実験的、カーネルビルドのみ確認)
-- Sony CECH-ZD1 J の ISDB-T 受信を `/dev/tornevideo*` として追加 (実機・カーネルビルド未確認)
+- Siano RIO 系の PX-S1UD V2.0 / PX-Q1UD と、MyGica T230C2 の ISDB-C / J.83B 受信を `/dev/px4video*` として追加 (実験的、カーネルビルドのみ確認)
+- Sony CECH-ZD1 J の ISDB-T 受信を `/dev/tornevideo*` として追加 (実験的、カーネルビルドのみ確認)
 - ソースコードを OS 非依存の `driver/common/` と Linux 固有の `driver/linux/` に分け、WinUSB 版・macOS 版とチップ制御のコードを共有
 
 #### ドライバの品質改善
@@ -220,7 +222,7 @@ python3 tools/tune_latency.py --json DriverHost_PX4.log
 
 - MyGica
 
-	- T230C 系 (USB `0572:c68a` の個体は T230C2、ISDB-C のみ・実験的)
+	- T230C 系 (USB `0572:c68a` の個体は T230C2、ISDB-C / J.83B・実験的)
 
 - Sony
 
@@ -295,7 +297,7 @@ certutil.exe -addstore TrustedPublisher ".\px4_drv_winusb.cer"
 - PX-S1UR: `BonDriver_PX-S1UR`
 - PX-S1UD V2.0: `BonDriver_PX-S1UD` (実験的)
 - PX-Q1UD: `BonDriver_PX-Q1UD` (実験的、4チューナーの並列受信は実機未確認)
-- MyGica T230C (0572:C68A): `BonDriver_T230C` (実験的、ISDB-C のみ)
+- MyGica T230C (0572:C68A): `BonDriver_T230C` (実験的、ISDB-C / J.83B)
 - Sony CECH-ZD1 J: `BonDriver_Torne` (実験的、ISDB-T のみ)
 
 お使いの PC に合うビット数のフォルダの中のファイルを**すべて**選択し、TVTest や EDCB などのソフトウェアが指定する BonDriver の配置フォルダにコピーします。  
@@ -1146,7 +1148,7 @@ System="ISDB-T,ISDB-S"
 
 ### MyGica T230C
 
-MyGica T230C は ISDB-C だけを受信できます (実験的)。チャンネル定義の形式は PX-MLT 系と同じで、Windows では `BonDriver_T230C` を使います。Si2168 の公開ドライバに ISDB-C (J.83 Annex C) の設定がないため、DVB-C 6 MHz の設定で受信しています。詳細は [T230C の説明](docs/t230c.md) を参照してください。
+MyGica T230C は ISDB-C と J.83 Annex B を選局できます (実験的)。チャンネル定義の形式は PX-MLT 系と同じで、Windows では `BonDriver_T230C` を使います。Si2168 の公開ドライバに ISDB-C (J.83 Annex C) の設定がないため、ISDB-C は DVB-C 6 MHz の設定で受信しています。J.83 Annex B は Si2168-D60 の仕様書の記載と TBS の公開ドライバーの設定値に基づき、実機の J.83B 信号では未確認です。詳細は [T230C の説明](docs/t230c.md) を参照してください。
 
 > [!WARNING]  
 > 2026/10/29 現在、recisdb の ISDB-C / J.83B サポートは [kazuki0824/recisdb-rs#202](https://github.com/kazuki0824/recisdb-rs/pull/202) にて開発中です。  
