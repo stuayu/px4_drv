@@ -245,7 +245,7 @@ Linux の USB ストリーム入力検査と URB 確保失敗時の回収は、`
 [`it930x_driver_native`](https://github.com/soralis0912/it930x_driver_native) は、IT930x UART とカード GPIO の通信手順を確認する資料です。  
 公式 BDA ドライバしか利用できなかった機能を、公開コードから再現できることを示した点に価値があります。  
 
-現在の [`it930x_bcas_*()`](../driver/it930x.c) とレジスタ操作を照合する用途に使います。  
+現在の [`it930x_bcas_*()`](../driver/common/bridge/it930x.c) とレジスタ操作を照合する用途に使います。  
 現行 Linux カーネルの機器寿命、共有電源、PC/SC 接続、TS 同時負荷を満たす根拠にはならないため、コード全体の移植は対象外です。  
 
 ## 調査後の採否

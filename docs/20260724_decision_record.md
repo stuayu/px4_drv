@@ -66,7 +66,7 @@ Linux 側も同じ完成条件を使います。
 ### Windows 実装を Linux の設計元として固定する
 
 Linux 版の内蔵カードリーダーへ進む前に、Windows 版の状態機械と共通 IT930x 操作を固定する方針を採用しました。  
-Linux と Windows は [`driver/common/bridge/it930x.c`](../driver/it930x.c) と [`driver/common/bridge/it930x.h`](../driver/it930x.h) を共有するため、Windows 側の未解決事項を残したまま Linux 側へ進むと、共通層の契約が途中で変わります。  
+Linux と Windows は [`driver/common/bridge/it930x.c`](../driver/common/bridge/it930x.c) と [`driver/common/bridge/it930x.h`](../driver/common/bridge/it930x.h) を共有するため、Windows 側の未解決事項を残したまま Linux 側へ進むと、共通層の契約が途中で変わります。  
 
 2026年7月24日時点では、Windows 開発環境で実装可能な既知のカードリーダー修正は残っていないと判断しました。  
 この判断は、全機種と長期稼働を確認済みという意味ではなく、現行コードから導ける修正と、Windows 検証環境で実行できる試験を完了したという意味です。  

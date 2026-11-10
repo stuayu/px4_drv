@@ -34,7 +34,7 @@ git log --oneline 185aa1329ee6b04d9456917db65a767d0f690fcf..HEAD
 ## 現在の到達点
 
 Windows 版の内蔵カードリーダーは、Linux 版の設計元として固定できる状態です。  
-Linux 実装に必要なハードウェア操作も [`driver/common/bridge/it930x.c`](../driver/it930x.c) と [`driver/common/bridge/it930x.h`](../driver/it930x.h) に共通処理として入っています。  
+Linux 実装に必要なハードウェア操作も [`driver/common/bridge/it930x.c`](../driver/common/bridge/it930x.c) と [`driver/common/bridge/it930x.h`](../driver/common/bridge/it930x.h) に共通処理として入っています。  
 
 Linux 側に残っている主要作業は、次の2系統です。  
 
@@ -132,7 +132,7 @@ ATR が形式不正だった場合に限り、カードリセットを1回だけ
 
 ## 共通 IT930x 実装
 
-Linux と Windows で共有するカード用ハードウェア操作は、すでに [`driver/common/bridge/it930x.c`](../driver/it930x.c) にあります。  
+Linux と Windows で共有するカード用ハードウェア操作は、すでに [`driver/common/bridge/it930x.c`](../driver/common/bridge/it930x.c) にあります。  
 Linux 側のデバイス実装から、この API をそのまま呼び出してください。  
 
 現在の API は次の処理を提供します。  
@@ -185,12 +185,12 @@ ISDB2056 系は、同じ IT930x 上で TS と B-CAS UART の制御転送を実�
 カード単体の APDU 試験に加え、受信中の APDU を必須試験にします。  
 
 電源を有効にした後のカード初期化に失敗した場合は、カード側が取得した電源利用数を戻します。  
-なお、Linux 側の [`driver/linux/isdb2056_device.c`](../driver/isdb2056_device.c) にカード処理はまだ存在せず、コミット `2559c7b34b0739802d5f716152600448aa11a4f9` が修正したのはチューナー open 失敗時の電源解放漏れです。  
+なお、Linux 側の [`driver/linux/isdb2056_device.c`](../driver/linux/isdb2056_device.c) にカード処理はまだ存在せず、コミット `2559c7b34b0739802d5f716152600448aa11a4f9` が修正したのはチューナー open 失敗時の電源解放漏れです。  
 カード実装時には、この修正が塞いだものと同じ形の失敗経路がカード側の電源利用数にも生まれるため、同じ考え方で解放漏れを防いでください。  
 
 ### Linux 側の機種判定
 
-Linux 側で対応機種を追加する前に、[`driver/linux/px4_usb.c`](../driver/px4_usb.c) の `DeviceDefinition` と各機種のプローブ処理を確認してください。  
+Linux 側で対応機種を追加する前に、[`driver/linux/px4_usb.c`](../driver/linux/px4_usb.c) の `DeviceDefinition` と各機種のプローブ処理を確認してください。  
 Windows 側に存在する機種名を、そのまま Linux 側の別デバイス実装として追加しないでください。  
 VID と PID だけからカードスロットの有無を推測せず、現在の機種定義、インターフェース番号、シリアル番号、既存の電源構成を組み合わせて判定します。  
 
