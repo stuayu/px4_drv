@@ -44,6 +44,11 @@ jobs:
         run: ls -l /lib/modules/*/updates/dkms/px4_drv.ko*
         shell: bash
 
+      - name: Show dkms build log
+        if: failure()
+        run: cat /var/lib/dkms/px4_drv/*/build/make.log
+        shell: bash
+
   build_pcsc:
     name: Build and Check PC/SC Package (${{ matrix.arch }})
     strategy:
