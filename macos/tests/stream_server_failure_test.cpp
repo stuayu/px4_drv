@@ -77,6 +77,16 @@ bool SendAll(int fd, const void *data, std::size_t size)
 	return true;
 }
 
+bool WaitForAccept(const px4::StreamServer &server)
+{
+	for (int attempt = 0; attempt < 200; ++attempt) {
+		if (server.GetActiveConnectionCount())
+			return true;
+		usleep(10000);
+	}
+	return false;
+}
+
 bool WaitForDisconnect(int fd)
 {
 	pollfd poll_fd{};
@@ -135,6 +145,14 @@ int main()
 	const std::string path = px4::runtime_path("px4_data_pipe.sock");
 	if (!ConnectLocal(path, client)) {
 		std::fprintf(stderr, "could not connect to the data pipe\n");
+		server.Stop();
+		return 1;
+	}
+
+	/* 受け付け前に Stop() すると接続が listen キューに残り、切断が通知されない。 */
+	if (!WaitForAccept(server)) {
+		std::fprintf(stderr, "the data pipe connection was not accepted\n");
+		close(client);
 		server.Stop();
 		return 1;
 	}
