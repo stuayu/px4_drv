@@ -71,6 +71,15 @@ public:
 			read_allowed = false;
 			return 0;
 		}
+		if (ready_delay.count()) {
+			ready_delay_until = std::chrono::steady_clock::now() + ready_delay;
+			ready_delay = std::chrono::milliseconds(0);
+		}
+		if (std::chrono::steady_clock::now() < ready_delay_until) {
+			ready = false;
+			read_allowed = false;
+			return 0;
+		}
 		ready = !read_queue.empty();
 		read_allowed = ready;
 		return 0;
@@ -300,6 +309,9 @@ public:
 	bool read_called_before_ready = false;
 	bool read_allowed = false;
 	unsigned int ready_delay_checks = 0;
+	/* 回数指定は負荷で sleep が延びると待機時間が膨らむため、時間で遅延させる */
+	std::chrono::milliseconds ready_delay{ 0 };
+	std::chrono::steady_clock::time_point ready_delay_until{};
 	int detect_error = 0;
 	unsigned int reset_count = 0;
 	unsigned int malformed_atr_resets = 0;
@@ -542,7 +554,7 @@ int main()
 		succeeded;
 
 	/* TB3 の BWI=4 は500ms を超える正当なブロック待機時間を許容する */
-	acas_device->ready_delay_checks = 120;
+	acas_device->ready_delay = std::chrono::milliseconds(800);
 	response_length = sizeof(response);
 	succeeded = Check(acas_card.Transmit(apdu, sizeof(apdu), response,
 		response_length) == 0 && response_length == 2,
